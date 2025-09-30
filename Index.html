@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Echotome</title>
+  <link rel="icon" href="/src/assets/icons/favicon.ico">
+  <link rel="stylesheet" href="/src/styles.css">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self'; style-src 'self' 'unsafe-inline'; media-src 'self' blob:; img-src 'self' data: blob:;">
+</head>
+<body>
+  <div id="app">
+    <h1>Echotome</h1>
+
+    <!-- Upload + Key tools -->
+    <input type="file" id="audioUpload" accept="audio/*">
+    <button id="analyzeBtn">Analyze & Generate Key</button>
+    <button id="renderKeySongBtn">Render Key→Song (WAV)</button>
+    <button id="exportMidiBtn" disabled>Export MIDI</button>
+    <label><input type="checkbox" id="exportStems"> Export stems</label>
+
+    <!-- Style + Motif -->
+    <label for="songStyle">Music style</label>
+    <select id="songStyle">
+      <option value="ambient" selected>Ambient</option>
+      <option value="piano">Piano</option>
+      <option value="chiptune">Chiptune</option>
+      <option value="bass">Bass</option>
+      <option value="percussive">Percussive</option>
+      <option value="modal">Modal</option>
+      <option value="trance">Trance</option>
+      <option value="lofi">Lo-Fi</option>
+    </select>
+
+    <input id="seedMotif" placeholder="Seed motif (e.g. cipher song)">
+    <select id="scalePreset">
+      <option value="auto" selected>Auto</option>
+      <option value="ionian">Ionian</option>
+      <option value="aeolian">Aeolian</option>
+      <option value="dorian">Dorian</option>
+      <option value="pentatonic">Pentatonic</option>
+      <option value="custom">Custom…</option>
+    </select>
+    <input id="customScale" placeholder="Custom semitones (0–11)" style="display:none">
+
+    <label><input type="checkbox" id="medley"> Medley</label>
+    <input id="medleyList" placeholder="ambient,trance,lofi" style="display:none">
+
+    <!-- Output -->
+    <audio id="keySongAudio" controls></audio>
+    <div id="messages"></div>
+  </div>
+
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
