@@ -5,7 +5,7 @@ export async function derivePDL(input: Uint8Array): Promise<Uint8Array> {
   // Multi-layer derivation process
   
   // Layer 1: Initial hash
-  const hash1 = await crypto.subtle.digest('SHA-256', input);
+  const hash1 = await crypto.subtle.digest('SHA-256', input as BufferSource);
   
   // Layer 2: XOR with rotated bits
   const rotated = new Uint8Array(hash1);
@@ -23,7 +23,7 @@ export async function derivePDL(input: Uint8Array): Promise<Uint8Array> {
   }
   
   // Layer 4: Final hash
-  const final = await crypto.subtle.digest('SHA-256', combined);
+  const final = await crypto.subtle.digest('SHA-256', combined as BufferSource);
   
   return new Uint8Array(final);
 }

@@ -6,14 +6,10 @@ const audioUpload = document.getElementById('audioUpload') as HTMLInputElement;
 const analyzeBtn = document.getElementById('analyzeBtn') as HTMLButtonElement;
 const renderKeySongBtn = document.getElementById('renderKeySongBtn') as HTMLButtonElement;
 const exportMidiBtn = document.getElementById('exportMidiBtn') as HTMLButtonElement;
-const exportStems = document.getElementById('exportStems') as HTMLInputElement;
-const songStyle = document.getElementById('songStyle') as HTMLSelectElement;
-const seedMotif = document.getElementById('seedMotif') as HTMLInputElement;
 const scalePreset = document.getElementById('scalePreset') as HTMLSelectElement;
 const customScale = document.getElementById('customScale') as HTMLInputElement;
 const medley = document.getElementById('medley') as HTMLInputElement;
 const medleyList = document.getElementById('medleyList') as HTMLInputElement;
-const keySongAudio = document.getElementById('keySongAudio') as HTMLAudioElement;
 const messages = document.getElementById('messages') as HTMLDivElement;
 
 let currentKey: Uint8Array | null = null;
@@ -80,14 +76,15 @@ async function deriveKey(data: Uint8Array): Promise<Uint8Array> {
   const pdlOutput = await derivePDL(data);
   
   // Hash the PDL output to get AES-256 key
-  const keyMaterial = await crypto.subtle.digest('SHA-256', pdlOutput);
+  const keyMaterial = await crypto.subtle.digest('SHA-256', pdlOutput as BufferSource);
   return new Uint8Array(keyMaterial);
 }
 
 // Initialize
 async function init() {
   // Run integrity check (for production builds)
-  if (import.meta.env.PROD) {
+  const isProd = import.meta.env && import.meta.env.PROD;
+  if (isProd) {
     // Expected hash would be set during build
     const isValid = await selfIntegrityCheck('');
     if (!isValid) {
