@@ -1,0 +1,27 @@
+body {
+  background: #0B0B0F;
+  color: #E6F0FF;
+  font-family: 'Inter', sans-serif;
+  padding: 2rem;
+}
+button {
+  margin: 0.25rem;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  border: none;
+  background: #3A7BD5;
+  color: white;
+  cursor: pointer;
+}
+button:disabled {
+  background: #444;
+  cursor: not-allowed;
+}
+input, select {
+  margin: 0.25rem 0;
+  padding: 0.4rem 0.6rem;
+  border-radius: 6px;
+  border: 1px solid #1c2430;
+  background: #0f141b;
+  color: #E6F0FF;
+}
