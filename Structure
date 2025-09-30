@@ -1,0 +1,15 @@
+echotome/
+├── src/
+│   ├── main.ts          # core app logic (crypto, audio, UI)
+│   ├── pdl.ts           # proprietary derivation layer (WASM shim)
+│   ├── guard.ts         # integrity + anti-tamper checks
+│   ├── styles.css       # UI styling
+│   └── assets/
+│       ├── logo.svg     # main Echotome logo (book + echoes)
+│       ├── icons/       # app icon set (favicon, mobile icons)
+│       ├── splash.png   # splash screen static
+│       └── animation/   # splash animation JSON/GIF
+├── index.html           # app shell
+├── package.json         # project metadata + scripts
+├── README.md            # project description + instructions
+└── LICENSE              # (MIT/Apache/Proprietary — your choice)
