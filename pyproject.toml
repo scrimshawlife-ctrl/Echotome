@@ -1,7 +1,7 @@
 [project]
 name = "echotome"
-version = "2.0.0"
-description = "Echotome — Audio-Field Key Derivation & Crypto-Sigil Engine (AAL / ABX-Core compatible)"
+version = "3.0.0"
+description = "Echotome — Ritual Cryptography Engine with Temporal Salt Chain, Device Identity, and ROC (AAL / ABX-Core compatible)"
 authors = [{ name = "Daniel K. Meyer" }]
 readme = "README.md"
 requires-python = ">=3.10"
