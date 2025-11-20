@@ -1,59 +1,271 @@
-# Echotome v2.0
+# Echotome v3.0
 
-**Audio-Field Key Derivation & Crypto-Sigil Engine**
+**Ritual Cryptography Engine**
 
-Echotome is a modular privacy instrument that combines audio biometrics with cryptography to create a unique encryption system. It uses **AF-KDF** (Audio-Field Key Derivation Function) to derive cryptographic keys from the combination of:
-- Your secret passphrase
-- Audio file characteristics
-- Privacy profile settings
+Echotome v3.0 introduces **Ritual Cryptography** — a system that binds encryption keys to the temporal playback of audio, creating cryptographic rituals that can only be performed in real-time with the correct audio, device, and timing.
 
 ---
 
-## Features
+## 🔮 What is Ritual Cryptography?
 
-### 🔐 AF-KDF (Audio-Field Key Derivation)
-Derives cryptographic keys from passphrase + audio features using:
-- Argon2id memory-hard KDF (with scrypt fallback)
-- SHA-256 audio feature hashing
-- HKDF for input mixing
+Traditional encryption: `key = hash(password)`
 
-### 🛡️ Privacy Profiles
-Three security modes for different use cases:
+Ritual Cryptography: `key = ritual(password + audio_playback_over_time + device_identity)`
 
-| Profile | Memory | Time | Audio Weight | Deniable |
-|---------|--------|------|--------------|----------|
-| **QuickLock** | 64 MB | 2 iter | 0.0 (passphrase only) | No |
-| **RitualLock** | 256 MB | 4 iter | 0.7 (strong audio binding) | No |
-| **BlackVault** | 512 MB | 8 iter | 1.0 (full audio dependence) | Yes |
-
-### 🔒 AEAD Encryption
-- **XChaCha20-Poly1305** (preferred)
-- **AES-GCM** (fallback)
-- Authenticated encryption with associated data
-
-### 🎨 Crypto-Sigils
-Deterministic visual art generated from audio + key:
-- Spectral feature mapping
-- Key-seeded randomness
-- 512x512 PNG output
-
-### 📦 Vault System
-JSON-backed encrypted storage:
-- Multiple vaults with different profiles
-- File encryption/decryption
-- Metadata tracking
-- Stored in `~/.echotome/`
-
-### 🌉 Abraxas Bridge
-Safe metadata export (NO secrets):
-- Rune IDs
-- Entropy scores
-- Profile statistics
-- Vault constellations
+**A ritual binding cannot be replayed, accelerated, or forged.** It requires:
+- The correct audio file
+- Real-time playback (no acceleration)
+- Active region detection (no silence binding)
+- Device identity verification
+- Temporal consistency (frames in order)
 
 ---
 
-## Installation
+## 🎯 V3.0 Core Features
+
+### 1. 🎵 Active Region Detection
+Automatically detects meaningful audio content, filtering out:
+- Silence and background noise
+- Lead-in/lead-out periods
+- Dead space
+
+**Algorithm**: Multi-metric analysis using RMS energy, spectral flux, and centroid shift
+
+**Module**: `echotome.active_region`
+
+```python
+from echotome import detect_active_region, load_audio_mono
+
+samples, sr = load_audio_mono(audio_path, 16000)
+active_frames, start, end = detect_active_region(samples, sr)
+```
+
+### 2. ⏱️ Temporal Salt Chain (TSC)
+Cryptographic hash chain that binds audio frames in temporal order.
+
+**Prevents**:
+- Audio acceleration attacks
+- Frame skipping
+- Precomputation
+
+**Requires**: Real-time playback within 80-120% speed tolerance
+
+**Module**: `echotome.temporal_salt_chain`
+
+```python
+from echotome import compute_temporal_hash
+
+# Batch mode (stored audio)
+temporal_hash = compute_temporal_hash(active_frames, device_pub, track_length)
+
+# Streaming mode (microphone)
+streamer = compute_temporal_hash_streaming(device_pub, track_length)
+for frame in live_audio_frames:
+    streamer.add_frame(frame)
+temporal_hash = streamer.finalize()
+```
+
+### 3. 🔑 Device Identity (Ed25519)
+Each device has a unique Ed25519 keypair stored in:
+```
+~/.echotome/identity/
+  ├── identity.key  (private, 0600)
+  └── identity.pub  (public, 0600)
+```
+
+**Features**:
+- Auto-generated on first run
+- User-only file permissions
+- Used in TSC and ROC signing
+- Binds rituals to specific devices
+
+**Module**: `echotome.identity_keys`
+
+```python
+from echotome import ensure_identity_keypair, get_identity_fingerprint
+
+keypair = ensure_identity_keypair()
+fingerprint = get_identity_fingerprint(keypair)
+print(f"Device fingerprint: {fingerprint}")
+```
+
+### 4. 📜 Ritual Ownership Certificates (ROC)
+Cryptographically signed documents proving ritual ownership.
+
+**Contains**:
+- Owner's public key
+- Audio hash
+- Active region boundaries
+- Privacy profile
+- Temporal hash
+- Ed25519 signature
+
+**Stored**: `~/.echotome/rituals/<rune_id>.roc.json`
+
+**Module**: `echotome.ritual_certificates`
+
+```python
+from echotome import create_ritual_certificate, verify_ritual_certificate
+
+cert = create_ritual_certificate(
+    rune_id="ECH-A1B2C3D4",
+    audio_hash=audio_hash,
+    active_start=100,
+    active_end=500,
+    profile="RitualLock",
+    temporal_hash=temporal_hash,
+    track_length=len(samples)
+)
+
+is_valid = verify_ritual_certificate(cert, expected_audio_hash)
+```
+
+### 5. 🖼️ Steganography (PNG LSB)
+Embeds encrypted master key and metadata into sigil PNG using LSB encoding.
+
+**Payload**:
+```json
+{
+  "rune_id": "ECH-...",
+  "enc_mk": "base64_encrypted_master_key",
+  "roc_hash": "sha256_of_roc",
+  "riv": "ritual_imprint_vector",
+  "version": "steg-1"
+}
+```
+
+**Capacity**: ~32KB for 512x512 RGB image
+
+**Module**: `echotome.stego`
+
+```python
+from echotome import embed_payload_in_png, extract_payload_from_png
+
+# Embed
+payload = {"rune_id": rune, "enc_mk": enc_key, "roc_hash": roc_hash, "riv": riv_hex}
+sigil_with_payload = embed_payload_in_png(sigil_image, payload)
+
+# Extract
+extracted = extract_payload_from_png(sigil_with_payload)
+```
+
+### 6. 🧬 Ritual Imprint Vector (RIV)
+256-bit fingerprint combining audio characteristics with temporal hash.
+
+**Components**:
+- Spectral signature (frequency domain)
+- Rhythm signature (temporal patterns)
+- Temporal hash (TSC output)
+
+**Uses**:
+- Stego payload verification
+- ROC cross-validation
+- Ritual matching
+
+**Module**: `echotome.imprint`
+
+```python
+from echotome import compute_riv, riv_to_hex
+
+riv = compute_riv(audio_features, temporal_hash)
+riv_hex = riv_to_hex(riv)  # 64-char hex string
+```
+
+---
+
+## 🔄 Ritual Lifecycle
+
+### Enrollment (Creating a Ritual Binding)
+
+```python
+from pathlib import Path
+from echotome import (
+    load_audio_mono,
+    detect_active_region,
+    extract_audio_features,
+    ensure_identity_keypair,
+    compute_temporal_hash,
+    compute_riv,
+    create_ritual_certificate,
+    save_ritual_certificate,
+    compute_audio_hash,
+)
+
+# 1. Load and analyze audio
+samples, sr = load_audio_mono(Path("audio.wav"), 16000)
+active_frames, start, end = detect_active_region(samples, sr)
+
+# 2. Extract features
+audio_features = extract_audio_features(Path("audio.wav"))
+
+# 3. Get device identity
+keypair = ensure_identity_keypair()
+
+# 4. Compute temporal hash
+temporal_hash = compute_temporal_hash(
+    active_frames,
+    keypair.pub,
+    len(samples)
+)
+
+# 5. Compute RIV
+riv = compute_riv(audio_features, temporal_hash)
+
+# 6. Create and save ROC
+audio_hash = compute_audio_hash(Path("audio.wav"))
+cert = create_ritual_certificate(
+    rune_id="ECH-12345678",
+    audio_hash=audio_hash,
+    active_start=start,
+    active_end=end,
+    profile="RitualLock",
+    temporal_hash=temporal_hash,
+    track_length=len(samples),
+    keypair=keypair,
+)
+save_ritual_certificate(cert)
+
+# 7. Generate sigil with embedded payload
+# (Next: integrate with sigil_layer + stego)
+```
+
+### Unlock (Verifying Ritual Binding)
+
+```python
+from echotome import (
+    load_certificate_by_rune_id,
+    verify_ritual_certificate,
+    verify_temporal_consistency,
+    extract_payload_from_png,
+)
+
+# 1. Load ROC
+cert = load_certificate_by_rune_id("ECH-12345678")
+
+# 2. Verify certificate
+assert verify_ritual_certificate(cert, expected_audio_hash)
+
+# 3. Replay audio and verify temporal consistency
+active_frames, _, _ = detect_active_region(samples, sr)
+assert verify_temporal_consistency(
+    cert.payload.temporal_hash,
+    keypair.pub,
+    len(samples),
+    active_frames,
+)
+
+# 4. Extract and verify stego payload
+payload = extract_payload_from_png(sigil_image)
+assert payload["rune_id"] == cert.payload.rune_id
+assert payload["roc_hash"] == compute_roc_hash(cert)
+
+# 5. Decrypt master key using temporal hash
+# (Next: integrate with crypto_core)
+```
+
+---
+
+## 📦 Installation
 
 ```bash
 pip install -e .
@@ -63,265 +275,192 @@ pip install -e .
 - numpy
 - soundfile
 - Pillow
-- cryptography (Argon2id, XChaCha20-Poly1305)
+- cryptography (Ed25519, Argon2id, XChaCha20-Poly1305)
 - fastapi, uvicorn (for API server)
 
 ---
 
-## Quick Start
-
-### Encrypt a File
-
-```bash
-python -c "
-from pathlib import Path
-from echotome import encrypt_with_echotome
-
-encrypt_with_echotome(
-    audio_path=Path('audio.wav'),
-    passphrase='my-secret-phrase',
-    profile_name='RitualLock',
-    in_file=Path('secret.txt'),
-    out_file=Path('secret.enc'),
-    sigil_path=Path('sigil.png'),
-)
-"
-```
-
-### Decrypt a File
-
-```bash
-python -c "
-from pathlib import Path
-from echotome import decrypt_with_echotome
-
-decrypt_with_echotome(
-    audio_path=Path('audio.wav'),
-    passphrase='my-secret-phrase',
-    blob_file=Path('secret.enc'),
-    out_file=Path('decrypted.txt'),
-)
-"
-```
-
----
-
-## Privacy Profiles Explained
+## 🔒 Privacy Profiles
 
 ### QuickLock 🔓
+- **Audio dependence**: None (passphrase only)
+- **Timing enforcement**: No
+- **Microphone mode**: No
 - **Use case**: Fast encryption, low-resource devices
-- **Audio**: Not used (passphrase only)
-- **Speed**: ~100ms encryption
-- **Security**: Standard passphrase-based
 
 ### RitualLock 🔮
-- **Use case**: Important files, symbolic audio binding
-- **Audio**: 70% influence on key derivation
-- **Speed**: ~500ms encryption
-- **Security**: Audio acts as secondary factor
-- **Note**: Requires same audio file to decrypt
+- **Audio dependence**: 70%
+- **Timing enforcement**: Yes (TSC validation)
+- **Microphone mode**: Optional
+- **Use case**: Important files, symbolic binding
 
 ### BlackVault 🖤
+- **Audio dependence**: 100%
+- **Timing enforcement**: Yes (strict)
+- **Microphone mode**: Required
+- **Deniability**: Decoy headers
 - **Use case**: Maximum paranoia, plausible deniability
-- **Audio**: 100% audio dependence
-- **Speed**: ~1s encryption
-- **Security**: Cannot decrypt without exact audio file
-- **Deniability**: Encrypted data includes decoy headers
 
 ---
 
-## Vault Management
+## 🏗️ Architecture (ABX-Core)
 
-### Create a Vault
-
-```python
-from pathlib import Path
-from echotome import create_vault, extract_audio_features, derive_final_key, get_profile, rune_id_from_key
-
-audio_features = extract_audio_features(Path('audio.wav'))
-profile = get_profile('RitualLock')
-key = derive_final_key('my-passphrase', audio_features, profile)
-rune = rune_id_from_key(key)
-
-vault = create_vault('MySecrets', 'RitualLock', rune)
-print(f"Created vault: {vault.id}")
+```
+echotome/
+├── active_region.py         # Active region detection
+├── temporal_salt_chain.py   # TSC implementation
+├── identity_keys.py         # Ed25519 device identity
+├── ritual_certificates.py   # ROC system
+├── stego.py                 # PNG LSB steganography
+├── imprint.py               # RIV computation
+├── audio_layer.py           # Audio I/O + feature extraction
+├── crypto_core.py           # AF-KDF + AEAD encryption
+├── privacy_profiles.py      # Profile definitions
+├── sigil_layer.py           # Visual crypto-art
+├── vaults.py                # Vault management
+├── pipeline.py              # High-level orchestration
+├── api.py                   # REST API server
+└── abraxas_bridge.py        # Metadata export
 ```
 
-### List Vaults
-
-```python
-from echotome import list_vaults
-
-vaults = list_vaults()
-for v in vaults:
-    print(f"{v.name}: {v.rune_id} ({v.file_count} files)")
-```
+All modules are independent and can be used standalone.
 
 ---
 
-## API Server
+## ⚠️ Security Considerations
 
-Start the REST API:
+### ✅ V3.0 Provides
+- Time-bound cryptographic rituals
+- Device-specific bindings
+- Real-time playback verification
+- Signed ownership certificates
+- Active region filtering
+- Temporal consistency checks
 
-```bash
-echotome-api
-# or
-python -m echotome.api
-```
-
-### Endpoints
-
-- `GET /health` - Health check
-- `GET /profiles` - List privacy profiles
-- `POST /create_vault` - Create new vault
-- `POST /encrypt` - Encrypt file
-- `POST /decrypt` - Decrypt file
-- `GET /vaults` - List all vaults
-- `DELETE /vaults/{id}` - Delete vault
-
----
-
-## How AF-KDF Works
-
-```
-┌─────────────┐
-│ Passphrase  │
-└──────┬──────┘
-       │
-       ├──────────────┐
-       │              │
-┌──────▼──────┐  ┌───▼────────┐
-│ Audio File  │  │  Profile   │
-│  Features   │  │  Settings  │
-└──────┬──────┘  └───┬────────┘
-       │             │
-       │   SHA-256   │
-       └──────┬──────┘
-              │
-       ┌──────▼──────┐
-       │    HKDF     │
-       │   Mixing    │
-       └──────┬──────┘
-              │
-       ┌──────▼──────┐
-       │  Argon2id   │
-       │  (or scrypt)│
-       └──────┬──────┘
-              │
-       ┌──────▼──────┐
-       │  Final Key  │
-       │  (32 bytes) │
-       └─────────────┘
-```
-
----
-
-## Security Considerations
-
-### ✅ What Echotome Provides
-- Memory-hard key derivation (Argon2id)
-- Authenticated encryption (AEAD)
-- Deterministic key generation
-- Audio as a second factor
-
-### ⚠️ What Echotome Does NOT Provide
+### ⚠️ V3.0 Does NOT Provide
+- **NOT secure against device cloning** (copy identity keys = same device)
+- **Audio is NOT secret** (anyone can access your audio file)
+- **Lose audio = lose data** (with RitualLock/BlackVault)
 - **NOT a replacement for standard encryption** (use for symbolic/artistic purposes)
-- **Audio is NOT secret** - Anyone can access your audio file
-- **Audio dependence is a feature AND risk** - Lose the audio, lose the data
-- **Plausible deniability is experimental** - Not legally tested
+- **Timing validation requires trusted clock**
 
 ### 🔒 Best Practices
 1. Use strong passphrases (20+ characters)
-2. Keep backup copies of audio files used with BlackVault
-3. Use RitualLock for important data (balance security/usability)
-4. Use QuickLock for non-sensitive data
-5. Never commit vault data or audio files to public repos
+2. Back up audio files AND identity keys
+3. Use RitualLock for important data
+4. Use BlackVault only when deniability needed
+5. Never share device identity keys
+6. Verify ROC signatures before unlock
 
 ---
 
-## Abraxas Integration
+## 🌉 Abraxas Integration
 
-Export metadata for Abraxas visualization:
+V3.0 exports safe ritual metadata:
 
 ```python
 from echotome import export_for_abraxas
 
 data = export_for_abraxas()
-print(data['stats'])
-print(data['constellation'])
+# {
+#   "version": "3.0",
+#   "vaults": [...],
+#   "stats": {...},
+#   "constellation": [...]
+# }
 ```
 
 **Abraxas receives**:
 - Rune IDs
+- RIV fingerprints (truncated)
 - Entropy scores
 - Profile distribution
-- Vault age/usage stats
+- Ritual age/usage stats
 
 **Abraxas NEVER receives**:
 - Encryption keys
-- Passphrases
-- Plaintext data
+- Temporal hashes
+- Device identity keys
+- ROC signatures
 - Audio file paths
 
 ---
 
-## CLI (Legacy v0.2.0)
+## 🧪 Development Status
 
-The original sigil-only CLI is still available:
+### ✅ V3.0 Core Complete
+- Active region detection
+- Temporal salt chain
+- Device identity (Ed25519)
+- Ritual certificates (ROC)
+- Steganography (PNG LSB)
+- Ritual Imprint Vector (RIV)
 
-```bash
-echotome input.wav output.png --key "secret" --json-out meta.json
+### 🚧 V3.0 Integration In Progress
+- Enrollment/unlock pipeline
+- Crypto-core temporal KDF
+- Sigil visual hash
+- Vault ROC binding
+- API v3.0 endpoints
+- Full microphone mode
+
+---
+
+## 📚 API Documentation
+
+### Core V3.0 Functions
+
+```python
+# Active region
+detect_active_region(samples, sr) -> (frames, start, end)
+
+# Temporal salt chain
+compute_temporal_hash(frames, device_pub, track_length) -> bytes
+
+# Device identity
+ensure_identity_keypair() -> IdentityKeypair
+
+# Ritual certificates
+create_ritual_certificate(...) -> RitualCertificate
+verify_ritual_certificate(cert, audio_hash) -> bool
+
+# Steganography
+embed_payload_in_png(image, payload) -> Image
+extract_payload_from_png(image) -> dict
+
+# Ritual Imprint Vector
+compute_riv(features, temporal_hash) -> bytes
 ```
 
 ---
 
-## Development
+## 🎮 Legacy Compatibility
 
-### Run Tests
-```bash
-pip install -e ".[dev]"
-pytest
-```
+V3.0 maintains full backward compatibility with v2.0 and v0.2.0:
 
-### Format Code
 ```bash
-black echotome/
-ruff check echotome/
+# V0.2.0 CLI (sigil generation)
+echotome input.wav output.png --key "secret"
+
+# V2.0 API
+from echotome import encrypt_with_echotome, decrypt_with_echotome
 ```
 
 ---
 
-## Architecture (ABX-Core Style)
-
-Echotome follows modular ABX-Core principles:
-
-```
-echotome/
-├── audio_layer.py      # Audio I/O and feature extraction
-├── crypto_core.py      # AF-KDF and AEAD encryption
-├── privacy_profiles.py # Profile definitions
-├── sigil_layer.py      # Visual crypto-art generation
-├── vaults.py           # Vault management
-├── pipeline.py         # High-level orchestration
-├── api.py              # REST API server
-└── abraxas_bridge.py   # Metadata export
-```
-
-Each module is standalone and can be used independently.
-
----
-
-## License
+## 📄 License
 
 See LICENSE file.
 
 ---
 
-## Support
+## 🤝 Support
 
 For issues, questions, or contributions:
 - GitHub: [scrimshawlife-ctrl/Echotome](https://github.com/scrimshawlife-ctrl/Echotome)
 
 ---
 
-**Echotome v2.0** — Where audio meets cryptography.
+**Echotome v3.0** — Where ritual meets cryptography.
+
+*"The ritual is the key."*
