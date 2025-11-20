@@ -1,0 +1,15 @@
+[project]
+name = "echotome"
+version = "0.2.0"
+description = "Echotome — audio-to-encrypted-sigil engine (AAL / ABX-Core compatible)"
+authors = [{ name = "Daniel K. Meyer" }]
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "numpy",
+  "soundfile",
+  "Pillow",
+]
+
+[project.scripts]
+echotome = "echotome.cli:main"
