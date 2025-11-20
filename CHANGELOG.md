@@ -39,7 +39,25 @@
   - Automatic redaction of sensitive fields in logs
   - Three privacy levels: STRICT (default), NORMAL, VERBOSE
 - **NEW**: Privacy-aware logger with field sanitization
-- **NEW**: Privacy posture documentation in codebase
+- **NEW**: Privacy posture documentation with locality guarantees
+- **NEW**: Session semantics section documenting ephemeral plaintext model
+
+#### Session Management (Ritual Windows)
+- **NEW**: Time-limited "ritual windows" where decrypted content exists (`sessions.py`)
+  - `SessionManager`: Tracks active decryption sessions
+  - `Session`: Dataclass with session_id, vault_id, expiry, master_key (in-memory only)
+  - `SessionConfig`: Profile-specific session parameters
+  - Session directories: `~/.echotome/sessions/<session_id>/` (700 permissions)
+  - Profile-based TTLs:
+    - Quick Lock: 30 min default (max 2 hours)
+    - Ritual Lock: 15 min default (max 1 hour)
+    - Black Vault: 5 min default (max 15 min, auto-lock on background)
+- **NEW**: Automatic session cleanup on expiry
+  - Master keys zeroized from memory
+  - Session directories securely wiped (files overwritten then deleted)
+  - Auto-lock timer visible in UI
+- **NEW**: Session extension support with max TTL enforcement
+- **NEW**: Cleanup of stale session directories on startup
 
 #### Versioning & Migration
 - **NEW**: Comprehensive version tracking

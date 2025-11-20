@@ -266,9 +266,20 @@ PRIVACY_POSTURE = """
 Echotome v3.1 Privacy Posture
 ==============================
 
+Locality Guarantee:
+-------------------
+Echotome performs ALL cryptographic operations locally. The system is designed
+to be completely self-contained:
+
+✓ Backend runs on YOUR machine (localhost) or YOUR self-hosted server
+✓ Mobile app talks ONLY to your backend (configurable API URL)
+✓ Network traffic limited to: client ↔ self-hosted Echotome API
+✓ No raw audio, decrypted content, or keys ever leave your control
+✓ No third-party servers, no cloud dependencies, no external APIs
+
 What Echotome NEVER Does:
 --------------------------
-✗ No external network calls (except API request handling)
+✗ No external network calls (except your own API endpoint)
 ✗ No telemetry or analytics
 ✗ No third-party service integration
 ✗ No cloud upload of audio, keys, or encrypted files
@@ -285,6 +296,25 @@ What Echotome Does Locally:
 ✓ Logs generic events (create/unlock/failure) with timestamps
 ✓ Computes cryptographic operations entirely on-device
 ✓ Keeps all ritual audio processing in memory (never persisted)
+
+Session Semantics (Ritual Windows):
+------------------------------------
+Decryption creates a time-limited session where plaintext exists ephemerally:
+
+✓ Session creates isolated directory: ~/.echotome/sessions/<session_id>/
+✓ Master keys reside in memory ONLY during session
+✓ Decrypted files live ONLY in session directory
+✓ Session auto-expires after profile-dependent TTL:
+  - Quick Lock: 30 min default (max 2 hours)
+  - Ritual Lock: 15 min default (max 1 hour)
+  - Black Vault: 5 min default (max 15 min)
+✓ On session end (timeout or manual lock):
+  - Master key zeroized from memory
+  - Session directory securely wiped (files overwritten then deleted)
+  - Vault returns to locked state
+✓ UI shows countdown timer during active session
+
+This shrinks the plaintext attack window to the ritual duration itself.
 
 Privacy Levels:
 ---------------

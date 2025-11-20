@@ -185,6 +185,18 @@ from .migration import (
     validate_version_compatibility,
 )
 
+# V3.1: Session management
+from .sessions import (
+    Session,
+    SessionConfig,
+    SessionManager,
+    get_session_manager,
+    create_session,
+    get_session,
+    end_session,
+    cleanup_expired_sessions,
+)
+
 __version__ = "3.1.0"
 
 __all__ = [
@@ -299,4 +311,13 @@ __all__ = [
     "needs_migration",
     "migrate_vault",
     "validate_version_compatibility",
+    # V3.1: Session management
+    "Session",
+    "SessionConfig",
+    "SessionManager",
+    "get_session_manager",
+    "create_session",
+    "get_session",
+    "end_session",
+    "cleanup_expired_sessions",
 ]
