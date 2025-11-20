@@ -1,7 +1,7 @@
 [project]
 name = "echotome"
-version = "0.2.0"
-description = "Echotome — audio-to-encrypted-sigil engine (AAL / ABX-Core compatible)"
+version = "2.0.0"
+description = "Echotome — Audio-Field Key Derivation & Crypto-Sigil Engine (AAL / ABX-Core compatible)"
 authors = [{ name = "Daniel K. Meyer" }]
 readme = "README.md"
 requires-python = ">=3.10"
@@ -9,7 +9,31 @@ dependencies = [
   "numpy",
   "soundfile",
   "Pillow",
+  "cryptography>=41.0.0",
+  "fastapi>=0.104.0",
+  "uvicorn>=0.24.0",
+  "python-multipart>=0.0.6",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=7.4.0",
+  "black>=23.0.0",
+  "ruff>=0.1.0",
 ]
 
 [project.scripts]
 echotome = "echotome.cli:main"
+echotome-api = "echotome.api:start_server"
+
+[build-system]
+requires = ["setuptools>=68.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.black]
+line-length = 100
+target-version = ["py310"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
