@@ -21,32 +21,99 @@ RITUALS_DIR = Path.home() / ".echotome" / "rituals"
 
 
 @dataclass
-class RitualCertificatePayload:
+class RitualTrack:
     """
-    Payload of a Ritual Ownership Certificate (ROC).
+    Single audio track in a ritual binding.
 
-    Contains all metadata about the ritual binding, excluding signature.
+    v3.1: Supports multi-part rituals where multiple tracks must be played in sequence.
     """
 
-    version: str  # ROC format version (e.g., "3.0")
-    owner_pub: str  # Base64-encoded owner public key
-    rune_id: str  # Unique rune identifier
     audio_hash: str  # SHA-256 of audio file (hex)
     active_start: int  # Start frame of active region
     active_end: int  # End frame of active region
-    profile: str  # Privacy profile name
-    created_at: float  # Unix timestamp
-    temporal_hash: Optional[str] = None  # Hex-encoded temporal hash (optional)
-    track_length: Optional[int] = None  # Track length in samples (optional)
+    riv: str  # Ritual Imprint Vector (hex)
+    temporal_hash: Optional[str] = None  # Hex-encoded temporal hash
+    track_length: Optional[int] = None  # Track length in samples
 
     def to_dict(self) -> dict:
         """Convert to dictionary."""
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, data: dict) -> RitualCertificatePayload:
+    def from_dict(cls, data: dict) -> "RitualTrack":
         """Create from dictionary."""
         return cls(**data)
+
+
+@dataclass
+class RitualCertificatePayload:
+    """
+    Payload of a Ritual Ownership Certificate (ROC).
+
+    Contains all metadata about the ritual binding, excluding signature.
+
+    v3.1: Supports multi-part rituals via 'tracks' field.
+    For backward compatibility, single-track fields are kept.
+    """
+
+    version: str  # ROC format version (e.g., "3.0", "3.1")
+    owner_pub: str  # Base64-encoded owner public key
+    rune_id: str  # Unique rune identifier
+    profile: str  # Privacy profile name
+    created_at: float  # Unix timestamp
+
+    # Single-track fields (v3.0 compat - deprecated in v3.1)
+    audio_hash: Optional[str] = None  # SHA-256 of audio file (hex)
+    active_start: Optional[int] = None  # Start frame of active region
+    active_end: Optional[int] = None  # End frame of active region
+    temporal_hash: Optional[str] = None  # Hex-encoded temporal hash
+    track_length: Optional[int] = None  # Track length in samples
+
+    # Multi-track field (v3.1+)
+    tracks: Optional[List[RitualTrack]] = None  # List of tracks in sequence
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary."""
+        d = asdict(self)
+
+        # Convert RitualTrack objects in tracks list
+        if d.get("tracks"):
+            d["tracks"] = [track.to_dict() if hasattr(track, 'to_dict') else track
+                          for track in d["tracks"]]
+
+        return d
+
+    @classmethod
+    def from_dict(cls, data: dict) -> RitualCertificatePayload:
+        """Create from dictionary."""
+        # Convert tracks if present
+        if "tracks" in data and data["tracks"]:
+            data = data.copy()
+            data["tracks"] = [
+                RitualTrack.from_dict(t) if isinstance(t, dict) else t
+                for t in data["tracks"]
+            ]
+        return cls(**data)
+
+    def is_multi_track(self) -> bool:
+        """Check if this is a multi-track ritual."""
+        return self.tracks is not None and len(self.tracks) > 1
+
+    def get_track_count(self) -> int:
+        """Get number of tracks in this ritual."""
+        if self.tracks:
+            return len(self.tracks)
+        elif self.audio_hash:  # Legacy single-track
+            return 1
+        return 0
+
+    def get_all_audio_hashes(self) -> List[str]:
+        """Get all audio hashes (supports both single and multi-track)."""
+        if self.tracks:
+            return [track.audio_hash for track in self.tracks]
+        elif self.audio_hash:
+            return [self.audio_hash]
+        return []
 
     def to_json(self) -> str:
         """Serialize to JSON."""
@@ -113,10 +180,14 @@ def create_ritual_certificate(
     profile: str,
     temporal_hash: Optional[bytes] = None,
     track_length: Optional[int] = None,
+    riv: Optional[str] = None,
     keypair: Optional[IdentityKeypair] = None,
 ) -> RitualCertificate:
     """
-    Create a new Ritual Ownership Certificate (ROC).
+    Create a new single-track Ritual Ownership Certificate (ROC).
+
+    v3.1: Creates backward-compatible v3.0 format but also includes tracks list
+    with single track for forward compatibility.
 
     Args:
         rune_id: Unique rune identifier
@@ -126,6 +197,7 @@ def create_ritual_certificate(
         profile: Privacy profile name
         temporal_hash: Optional temporal hash bytes
         track_length: Optional track length in samples
+        riv: Optional Ritual Imprint Vector (hex)
         keypair: Optional identity keypair (loads from disk if None)
 
     Returns:
@@ -137,18 +209,79 @@ def create_ritual_certificate(
     if keypair is None:
         keypair = ensure_identity_keypair()
 
-    # Create payload
-    payload = RitualCertificatePayload(
-        version="3.0",
-        owner_pub=base64.b64encode(keypair.pub).decode("ascii"),
-        rune_id=rune_id,
+    # Create single track
+    track = RitualTrack(
         audio_hash=audio_hash,
         active_start=active_start,
         active_end=active_end,
-        profile=profile,
-        created_at=time.time(),
+        riv=riv or "",
         temporal_hash=temporal_hash.hex() if temporal_hash else None,
         track_length=track_length,
+    )
+
+    # Create payload (v3.1 format with both legacy and new fields)
+    payload = RitualCertificatePayload(
+        version="3.1",
+        owner_pub=base64.b64encode(keypair.pub).decode("ascii"),
+        rune_id=rune_id,
+        profile=profile,
+        created_at=time.time(),
+        # Legacy fields for v3.0 compat
+        audio_hash=audio_hash,
+        active_start=active_start,
+        active_end=active_end,
+        temporal_hash=temporal_hash.hex() if temporal_hash else None,
+        track_length=track_length,
+        # v3.1 multi-track field
+        tracks=[track],
+    )
+
+    # Sign payload
+    payload_bytes = payload.to_bytes()
+    signature_bytes = sign_data(payload_bytes, keypair)
+    signature_b64 = base64.b64encode(signature_bytes).decode("ascii")
+
+    return RitualCertificate(payload=payload, signature=signature_b64)
+
+
+def create_multi_track_ritual_certificate(
+    rune_id: str,
+    tracks: List[RitualTrack],
+    profile: str,
+    keypair: Optional[IdentityKeypair] = None,
+) -> RitualCertificate:
+    """
+    Create a multi-track Ritual Ownership Certificate (ROC).
+
+    v3.1: Supports multiple tracks that must be played in sequence.
+
+    Args:
+        rune_id: Unique rune identifier
+        tracks: List of RitualTrack objects in order
+        profile: Privacy profile name
+        keypair: Optional identity keypair (loads from disk if None)
+
+    Returns:
+        Signed RitualCertificate
+
+    Raises:
+        ValueError: If tracks list is empty or invalid
+    """
+    if not tracks:
+        raise ValueError("Must provide at least one track")
+
+    if keypair is None:
+        keypair = ensure_identity_keypair()
+
+    # Create payload (v3.1 format, no legacy fields for multi-track)
+    payload = RitualCertificatePayload(
+        version="3.1",
+        owner_pub=base64.b64encode(keypair.pub).decode("ascii"),
+        rune_id=rune_id,
+        profile=profile,
+        created_at=time.time(),
+        tracks=tracks,
+        # No legacy fields - multi-track only
     )
 
     # Sign payload

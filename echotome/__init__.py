@@ -1,7 +1,16 @@
 """
-Echotome v3.0 — Ritual Cryptography Engine
+Echotome v3.1 — Ritual Cryptography Engine (Hardened)
 
 A modular privacy instrument combining:
+
+V3.1 Hardening Features:
+- Threat Models: Explicit security posture per privacy profile
+- Recovery Codes: Optional recovery with cryptographic code generation
+- Multi-Part Rituals: Chain multiple tracks in sequence for higher entropy
+- Privacy Guardrails: Strict telemetry controls and PII redaction
+- Versioning: Forward-compatible data structures with migration support
+
+V3.0 Core Features:
 - Active Region Detection: Audio activity analysis
 - Temporal Salt Chain (TSC): Time-bound cryptographic hash chain
 - Device Identity: Ed25519 keypair management
@@ -9,7 +18,7 @@ A modular privacy instrument combining:
 - Steganography: PNG LSB payload embedding
 - Ritual Imprint Vector (RIV): 256-bit ritual fingerprint
 - AF-KDF: Audio-Field Key Derivation Function
-- Privacy Profiles: QuickLock, RitualLock, BlackVault
+- Privacy Profiles: Quick Lock, Ritual Lock, Black Vault
 - AEAD Encryption: XChaCha20-Poly1305 / AES-GCM
 - Vault Management: Secure encrypted storage with ROC binding
 - Sigil Generation: Deterministic visual crypto-art with visual hash
@@ -22,11 +31,14 @@ modular, deterministic, and pipeline-friendly.
 # Core configuration (v0.2.0 legacy)
 from .config import EchotomeConfig, EchotomeResult
 
-# Privacy profiles
+# Privacy profiles (v3.1: extended with threat models)
 from .privacy_profiles import (
     PrivacyProfile,
     get_profile,
     list_profiles,
+    describe_profile,
+    validate_ritual_mode,
+    get_kdf_params,
     QUICK_LOCK,
     RITUAL_LOCK,
     BLACK_VAULT,
@@ -106,11 +118,13 @@ from .identity_keys import (
     verify_signature,
 )
 
-# V3.0: Ritual certificates
+# V3.0: Ritual certificates (v3.1: extended with multi-track support)
 from .ritual_certificates import (
     RitualCertificate,
     RitualCertificatePayload,
+    RitualTrack,
     create_ritual_certificate,
+    create_multi_track_ritual_certificate,
     verify_ritual_certificate,
     save_ritual_certificate,
     load_certificate_by_rune_id,
@@ -138,7 +152,40 @@ from .imprint import (
     verify_riv_consistency,
 )
 
-__version__ = "3.0.0"
+# V3.1: Recovery codes
+from .recovery import (
+    RecoveryConfig,
+    generate_recovery_codes,
+    hash_recovery_codes,
+    verify_recovery_code,
+    create_recovery_config,
+    validate_and_mark_used,
+    disable_recovery,
+    get_recovery_strength,
+    format_codes_for_display,
+)
+
+# V3.1: Privacy posture
+from .privacy import (
+    PrivacyLevel,
+    get_logger,
+    set_privacy_level,
+    get_privacy_level,
+    sanitize_log_data,
+    get_privacy_posture,
+)
+
+# V3.1: Versioning & migration
+from .migration import (
+    VersionInfo,
+    ECHOTOME_VERSION,
+    is_compatible,
+    needs_migration,
+    migrate_vault,
+    validate_version_compatibility,
+)
+
+__version__ = "3.1.0"
 
 __all__ = [
     # Version
@@ -151,6 +198,9 @@ __all__ = [
     "PrivacyProfile",
     "get_profile",
     "list_profiles",
+    "describe_profile",
+    "validate_ritual_mode",
+    "get_kdf_params",
     "QUICK_LOCK",
     "RITUAL_LOCK",
     "BLACK_VAULT",
@@ -200,10 +250,12 @@ __all__ = [
     "get_identity_fingerprint",
     "sign_data",
     "verify_signature",
-    # V3.0: Ritual certificates
+    # V3.0: Ritual certificates (v3.1: multi-track)
     "RitualCertificate",
     "RitualCertificatePayload",
+    "RitualTrack",
     "create_ritual_certificate",
+    "create_multi_track_ritual_certificate",
     "verify_ritual_certificate",
     "save_ritual_certificate",
     "load_certificate_by_rune_id",
@@ -223,4 +275,28 @@ __all__ = [
     "compare_rivs",
     "riv_distance",
     "verify_riv_consistency",
+    # V3.1: Recovery codes
+    "RecoveryConfig",
+    "generate_recovery_codes",
+    "hash_recovery_codes",
+    "verify_recovery_code",
+    "create_recovery_config",
+    "validate_and_mark_used",
+    "disable_recovery",
+    "get_recovery_strength",
+    "format_codes_for_display",
+    # V3.1: Privacy posture
+    "PrivacyLevel",
+    "get_logger",
+    "set_privacy_level",
+    "get_privacy_level",
+    "sanitize_log_data",
+    "get_privacy_posture",
+    # V3.1: Versioning & migration
+    "VersionInfo",
+    "ECHOTOME_VERSION",
+    "is_compatible",
+    "needs_migration",
+    "migrate_vault",
+    "validate_version_compatibility",
 ]

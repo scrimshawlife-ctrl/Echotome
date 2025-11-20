@@ -1,7 +1,7 @@
 [project]
 name = "echotome"
-version = "3.0.0"
-description = "Echotome — Ritual Cryptography Engine with Temporal Salt Chain, Device Identity, and ROC (AAL / ABX-Core compatible)"
+version = "3.1.0"
+description = "Echotome v3.1 — Ritual Cryptography Engine (Hardened) with Threat Models, Recovery Codes, Multi-Part Rituals, and Privacy Guardrails"
 authors = [{ name = "Daniel K. Meyer" }]
 readme = "README.md"
 requires-python = ">=3.10"
@@ -13,6 +13,7 @@ dependencies = [
   "fastapi>=0.104.0",
   "uvicorn>=0.24.0",
   "python-multipart>=0.0.6",
+  "packaging>=23.0",
 ]
 
 [project.optional-dependencies]
