@@ -1,7 +1,8 @@
 /**
- * Echotome Mobile v3.0 API Client
+ * Echotome Mobile v3.1 API Client
  *
- * HTTP client for communicating with Echotome v3.0 backend
+ * HTTP client for communicating with Echotome v3.1 backend
+ * Includes session management, recovery codes, and threat model support
  */
 
 import axios, { AxiosInstance, AxiosError } from 'axios';
@@ -15,9 +16,22 @@ import type {
   VerifyPlaybackRequest,
   VerifyPlaybackResponse,
   HealthResponse,
+  ApiInfoResponse,
   ErrorResponse,
   FilePickerResult,
   RitualMode,
+  // v3.1 session types
+  Session,
+  CreateSessionRequest,
+  CreateSessionResponse,
+  ListSessionsResponse,
+  ExtendSessionRequest,
+  ExtendSessionResponse,
+  EndSessionResponse,
+  SessionConfig,
+  ProfileInfo,
+  ProfileDetail,
+  RecoveryCodesResponse,
 } from './types';
 
 /**
@@ -67,6 +81,10 @@ export class EchotomeApiClient {
     return this.baseUrl;
   }
 
+  // =========================================================================
+  // Health & Info
+  // =========================================================================
+
   /**
    * Health check
    */
@@ -76,10 +94,146 @@ export class EchotomeApiClient {
   }
 
   /**
+   * API info (v3.1)
+   */
+  async info(): Promise<ApiInfoResponse> {
+    const response = await this.client.get<ApiInfoResponse>('/info');
+    return response.data;
+  }
+
+  // =========================================================================
+  // Profiles (v3.1 enhanced)
+  // =========================================================================
+
+  /**
+   * List all profiles with threat models
+   */
+  async listProfiles(): Promise<{ profiles: ProfileInfo[]; info: any }> {
+    const response = await this.client.get('/profiles');
+    return response.data;
+  }
+
+  /**
+   * Get profile detail with threat model
+   */
+  async getProfile(profileName: string): Promise<ProfileDetail> {
+    const response = await this.client.get<ProfileDetail>(`/profiles/${encodeURIComponent(profileName)}`);
+    return response.data;
+  }
+
+  /**
+   * Get session config for profile
+   */
+  async getProfileSessionConfig(profileName: string): Promise<SessionConfig> {
+    const response = await this.client.get<SessionConfig>(`/profiles/${encodeURIComponent(profileName)}/session_config`);
+    return response.data;
+  }
+
+  // =========================================================================
+  // Sessions (v3.1)
+  // =========================================================================
+
+  /**
+   * Create a new ritual session
+   */
+  async createSession(request: CreateSessionRequest): Promise<CreateSessionResponse> {
+    const response = await this.client.post<CreateSessionResponse>('/sessions', request);
+    return response.data;
+  }
+
+  /**
+   * List all active sessions
+   */
+  async listSessions(): Promise<ListSessionsResponse> {
+    const response = await this.client.get<ListSessionsResponse>('/sessions');
+    return response.data;
+  }
+
+  /**
+   * Get session by ID
+   */
+  async getSession(sessionId: string): Promise<Session> {
+    const response = await this.client.get<Session>(`/sessions/${sessionId}`);
+    return response.data;
+  }
+
+  /**
+   * Extend session TTL
+   */
+  async extendSession(sessionId: string, additionalSeconds: number): Promise<ExtendSessionResponse> {
+    const response = await this.client.post<ExtendSessionResponse>(
+      `/sessions/${sessionId}/extend`,
+      { additional_seconds: additionalSeconds }
+    );
+    return response.data;
+  }
+
+  /**
+   * End session (lock vault)
+   */
+  async endSession(sessionId: string, secureDelete: boolean = true): Promise<EndSessionResponse> {
+    const response = await this.client.delete<EndSessionResponse>(
+      `/sessions/${sessionId}`,
+      { params: { secure_delete: secureDelete } }
+    );
+    return response.data;
+  }
+
+  /**
+   * Cleanup expired sessions
+   */
+  async cleanupSessions(): Promise<{ status: string; sessions_cleaned: number }> {
+    const response = await this.client.post('/sessions/cleanup');
+    return response.data;
+  }
+
+  /**
+   * End all sessions (emergency lock)
+   */
+  async endAllSessions(secureDelete: boolean = true): Promise<{ status: string; sessions_ended: number }> {
+    const response = await this.client.delete('/sessions', {
+      params: { secure_delete: secureDelete }
+    });
+    return response.data;
+  }
+
+  // =========================================================================
+  // Recovery Codes (v3.1)
+  // =========================================================================
+
+  /**
+   * Generate recovery codes for a vault
+   */
+  async generateRecoveryCodes(vaultId: string, count: number = 5): Promise<RecoveryCodesResponse> {
+    const formData = new FormData();
+    formData.append('vault_id', vaultId);
+    formData.append('count', count.toString());
+
+    const response = await this.client.post<RecoveryCodesResponse>('/recovery/generate', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data;
+  }
+
+  // =========================================================================
+  // Vaults
+  // =========================================================================
+
+  /**
    * List all vaults
    */
   async listVaults(): Promise<Vault[]> {
-    const response = await this.client.get<Vault[]>('/vaults');
+    const response = await this.client.get('/vaults');
+    return response.data.vaults || response.data;
+  }
+
+  /**
+   * Get vault by ID (includes session status in v3.1)
+   */
+  async getVault(vaultId: string): Promise<Vault> {
+    const response = await this.client.get<Vault>(`/vaults/${vaultId}`);
     return response.data;
   }
 
@@ -88,6 +242,14 @@ export class EchotomeApiClient {
    */
   async createVault(request: CreateVaultRequest): Promise<CreateVaultResponse> {
     const response = await this.client.post<CreateVaultResponse>('/create_vault', request);
+    return response.data;
+  }
+
+  /**
+   * Delete vault
+   */
+  async deleteVault(vaultId: string): Promise<{ status: string; vault_id: string }> {
+    const response = await this.client.delete(`/vaults/${vaultId}`);
     return response.data;
   }
 
@@ -148,11 +310,13 @@ export class EchotomeApiClient {
   async decrypt(
     vaultId: string,
     ritualMode: RitualMode,
-    audioFile?: FilePickerResult
+    audioFile?: FilePickerResult,
+    createSession: boolean = true
   ): Promise<DecryptResponse> {
     const formData = new FormData();
     formData.append('vault_id', vaultId);
     formData.append('ritual_mode', ritualMode);
+    formData.append('create_session', createSession.toString());
 
     if (audioFile && ritualMode === 'file') {
       formData.append('audio', {
