@@ -20,7 +20,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional, Dict, List
-from threading import Lock
+from threading import RLock
 
 from .privacy import get_logger
 
@@ -143,7 +143,7 @@ class SessionManager:
 
     def __init__(self):
         self._sessions: Dict[str, Session] = {}
-        self._lock = Lock()
+        self._lock = RLock()
 
         # Ensure sessions directory exists
         SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
