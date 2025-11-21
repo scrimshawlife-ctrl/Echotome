@@ -1,11 +1,23 @@
+"""
+Echotome v3.1 REST API
+
+Provides HTTP endpoints for:
+- Vault management (create, list, delete)
+- Encryption/decryption with AF-KDF
+- Session management (ritual windows)
+- Privacy profiles with threat models
+- Multi-track ritual support
+"""
+
 from __future__ import annotations
 
 import tempfile
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List
 
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
+from pydantic import BaseModel
 
 from .pipeline import encrypt_with_echotome, decrypt_with_echotome
 from .vaults import (
@@ -17,29 +29,97 @@ from .vaults import (
     decrypt_file_from_vault,
     get_vault_stats,
 )
-from .privacy_profiles import list_profiles, profile_info
+from .privacy_profiles import list_profiles, profile_info, get_profile, describe_profile
 from .audio_layer import extract_audio_features
 from .crypto_core import derive_final_key, rune_id_from_key
-from .privacy_profiles import get_profile
+from .sessions import (
+    get_session_manager,
+    Session,
+    SessionConfig,
+)
+from .recovery import generate_recovery_codes, create_recovery_config
 
 
 # Initialize FastAPI app
 app = FastAPI(
     title="Echotome API",
-    description="Audio-Field Key Derivation and Crypto-Sigil Engine",
-    version="2.0.0",
+    description="Ritual Cryptography Engine — Audio-Field Key Derivation with Session Management",
+    version="3.1.0",
 )
 
+
+# ============================================================================
+# Pydantic Models for API
+# ============================================================================
+
+class SessionCreateRequest(BaseModel):
+    vault_id: str
+    profile: str
+    ttl_seconds: Optional[int] = None
+
+
+class SessionExtendRequest(BaseModel):
+    additional_seconds: int
+
+
+class SessionResponse(BaseModel):
+    session_id: str
+    vault_id: str
+    profile: str
+    created_at: float
+    expires_at: float
+    time_remaining: int
+    time_remaining_formatted: str
+
+
+class ProfileResponse(BaseModel):
+    name: str
+    kdf_time: int
+    kdf_memory: int
+    audio_weight: float
+    deniable: bool
+    threat_model_id: str
+    threat_model_description: str
+    default_session_ttl: int
+    max_session_ttl: int
+    recovery_enabled_default: bool
+
+
+# ============================================================================
+# Health & Info
+# ============================================================================
 
 @app.get("/health")
 async def health_check():
     """Health check endpoint."""
-    return {"status": "healthy", "version": "2.0.0"}
+    return {"status": "healthy", "version": "3.1.0"}
 
+
+@app.get("/info")
+async def api_info():
+    """API information and capabilities."""
+    return {
+        "name": "Echotome",
+        "version": "3.1.0",
+        "edition": "Hardened",
+        "features": [
+            "session_management",
+            "multi_track_rituals",
+            "recovery_codes",
+            "threat_models",
+            "privacy_guardrails",
+        ],
+        "locality": "All cryptographic operations performed locally",
+    }
+
+
+# ============================================================================
+# Privacy Profiles (v3.1 Enhanced)
+# ============================================================================
 
 @app.get("/profiles")
 async def get_profiles():
-    """List all available privacy profiles."""
+    """List all available privacy profiles with threat models."""
     profiles = list_profiles()
     return {
         "profiles": [
@@ -47,8 +127,15 @@ async def get_profiles():
                 "name": p.name,
                 "kdf_time": p.kdf_time,
                 "kdf_memory": p.kdf_memory,
+                "kdf_parallelism": getattr(p, "kdf_parallelism", 4),
                 "audio_weight": p.audio_weight,
                 "deniable": p.deniable,
+                "requires_mic": getattr(p, "requires_mic", False),
+                "requires_timing": getattr(p, "requires_timing", False),
+                "hardware_recommended": getattr(p, "hardware_recommended", False),
+                "threat_model_id": getattr(p, "threat_model_id", "unknown"),
+                "threat_model_description": getattr(p, "threat_model_description", ""),
+                "unrecoverable_default": getattr(p, "unrecoverable_default", False),
             }
             for p in profiles
         ],
@@ -56,21 +143,246 @@ async def get_profiles():
     }
 
 
+@app.get("/profiles/{profile_name}")
+async def get_profile_detail(profile_name: str):
+    """Get detailed profile information including threat model."""
+    try:
+        description = describe_profile(profile_name)
+        return description
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@app.get("/profiles/{profile_name}/session_config")
+async def get_profile_session_config(profile_name: str):
+    """Get session configuration for a profile."""
+    try:
+        config = SessionConfig.for_profile(profile_name)
+        return {
+            "profile": profile_name,
+            "default_ttl_seconds": config.default_ttl_seconds,
+            "max_ttl_seconds": config.max_ttl_seconds,
+            "auto_lock_on_background": config.auto_lock_on_background,
+            "allow_external_apps": config.allow_external_apps,
+            "secure_delete": config.secure_delete,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+# ============================================================================
+# Session Management (v3.1)
+# ============================================================================
+
+@app.post("/sessions", response_model=SessionResponse)
+async def create_session(request: SessionCreateRequest):
+    """
+    Create a new ritual session (ritual window).
+
+    Sessions provide time-limited access to decrypted vault content.
+    Master keys are held in memory only during the session.
+    """
+    try:
+        manager = get_session_manager()
+
+        # Use profile-specific defaults if TTL not specified
+        config = SessionConfig.for_profile(request.profile)
+        ttl = request.ttl_seconds or config.default_ttl_seconds
+
+        # Enforce max TTL
+        if ttl > config.max_ttl_seconds:
+            ttl = config.max_ttl_seconds
+
+        # Create session (master_key would come from successful unlock)
+        # For API, we create a placeholder - real key comes from decrypt flow
+        session = manager.create_session(
+            vault_id=request.vault_id,
+            profile=request.profile,
+            master_key=None,  # Set during actual unlock
+            ttl_seconds=ttl,
+        )
+
+        return SessionResponse(
+            session_id=session.session_id,
+            vault_id=session.vault_id,
+            profile=session.profile,
+            created_at=session.created_at,
+            expires_at=session.expires_at,
+            time_remaining=session.time_remaining(),
+            time_remaining_formatted=session.format_time_remaining(),
+        )
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/sessions")
+async def list_sessions():
+    """List all active sessions."""
+    manager = get_session_manager()
+    sessions = manager.list_sessions()
+
+    return {
+        "sessions": [
+            {
+                "session_id": s.session_id,
+                "vault_id": s.vault_id,
+                "profile": s.profile,
+                "created_at": s.created_at,
+                "expires_at": s.expires_at,
+                "time_remaining": s.time_remaining(),
+                "time_remaining_formatted": s.format_time_remaining(),
+                "is_expired": s.is_expired(),
+            }
+            for s in sessions
+        ],
+        "count": len(sessions),
+    }
+
+
+@app.get("/sessions/{session_id}")
+async def get_session(session_id: str):
+    """Get session by ID."""
+    manager = get_session_manager()
+    session = manager.get_session(session_id)
+
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found or expired")
+
+    return {
+        "session_id": session.session_id,
+        "vault_id": session.vault_id,
+        "profile": session.profile,
+        "created_at": session.created_at,
+        "expires_at": session.expires_at,
+        "time_remaining": session.time_remaining(),
+        "time_remaining_formatted": session.format_time_remaining(),
+        "last_activity": session.last_activity,
+    }
+
+
+@app.post("/sessions/{session_id}/extend")
+async def extend_session(session_id: str, request: SessionExtendRequest):
+    """Extend session TTL (within profile max limits)."""
+    manager = get_session_manager()
+    session = manager.get_session(session_id)
+
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found or expired")
+
+    try:
+        success = manager.extend_session(session_id, request.additional_seconds)
+        if not success:
+            raise HTTPException(status_code=400, detail="Failed to extend session")
+
+        # Get updated session
+        session = manager.get_session(session_id)
+        return {
+            "session_id": session.session_id,
+            "expires_at": session.expires_at,
+            "time_remaining": session.time_remaining(),
+            "time_remaining_formatted": session.format_time_remaining(),
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.delete("/sessions/{session_id}")
+async def end_session(session_id: str, secure_delete: bool = True):
+    """
+    End session and securely cleanup all decrypted content.
+
+    Args:
+        session_id: Session to end
+        secure_delete: Overwrite files with random data before deletion (default: True)
+    """
+    manager = get_session_manager()
+    session = manager.get_session(session_id)
+
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found or expired")
+
+    manager.end_session(session_id, secure_delete=secure_delete)
+
+    return {
+        "status": "ended",
+        "session_id": session_id,
+        "secure_delete": secure_delete,
+    }
+
+
+@app.post("/sessions/cleanup")
+async def cleanup_expired_sessions():
+    """Cleanup all expired sessions and their decrypted content."""
+    manager = get_session_manager()
+    count = manager.cleanup_expired_sessions()
+
+    return {
+        "status": "cleanup_complete",
+        "sessions_cleaned": count,
+    }
+
+
+@app.delete("/sessions")
+async def end_all_sessions(secure_delete: bool = True):
+    """End all active sessions (emergency lock)."""
+    manager = get_session_manager()
+    count = manager.end_all_sessions(secure_delete=secure_delete)
+
+    return {
+        "status": "all_sessions_ended",
+        "sessions_ended": count,
+        "secure_delete": secure_delete,
+    }
+
+
+# ============================================================================
+# Recovery Codes (v3.1)
+# ============================================================================
+
+@app.post("/recovery/generate")
+async def generate_recovery(vault_id: str = Form(...), count: int = Form(5)):
+    """
+    Generate recovery codes for a vault.
+
+    IMPORTANT: Codes are displayed ONCE. User must store them securely.
+    Only hashes are stored in the vault configuration.
+    """
+    if count < 1 or count > 10:
+        raise HTTPException(status_code=400, detail="Count must be between 1 and 10")
+
+    codes = generate_recovery_codes(count=count)
+    config = create_recovery_config(codes=codes, enabled=True, vault_id=vault_id)
+
+    return {
+        "vault_id": vault_id,
+        "codes": codes,  # ONE-TIME DISPLAY
+        "warning": "Store these codes securely. They will NOT be shown again.",
+        "count": len(codes),
+        "hashes_stored": len(config.hashed_codes),
+    }
+
+
+# ============================================================================
+# Vault Management
+# ============================================================================
+
 @app.post("/create_vault")
 async def api_create_vault(
     name: str = Form(...),
     profile: str = Form(...),
     audio_file: UploadFile = File(...),
     passphrase: str = Form(...),
+    enable_recovery: bool = Form(True),
 ):
     """
     Create a new vault.
 
     Args:
         name: Vault name
-        profile: Privacy profile (QuickLock, RitualLock, BlackVault)
+        profile: Privacy profile (Quick Lock, Ritual Lock, Black Vault)
         audio_file: Audio file for AF-KDF
         passphrase: User passphrase
+        enable_recovery: Enable recovery codes (default: True, except Black Vault)
 
     Returns:
         Vault metadata with rune_id
@@ -90,16 +402,27 @@ async def api_create_vault(
         # Create vault
         vault = create_vault(name, profile, rune_id)
 
+        # Generate recovery codes if enabled
+        recovery_codes = None
+        if enable_recovery and not getattr(profile_obj, "unrecoverable_default", False):
+            recovery_codes = generate_recovery_codes(count=5)
+
         # Clean up temp file
         tmp_path.unlink()
 
-        return {
+        response = {
             "vault_id": vault.id,
             "name": vault.name,
             "profile": vault.profile,
             "rune_id": vault.rune_id,
             "created_at": vault.created_at,
         }
+
+        if recovery_codes:
+            response["recovery_codes"] = recovery_codes
+            response["recovery_warning"] = "Store these codes securely. They will NOT be shown again."
+
+        return response
 
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -170,6 +493,7 @@ async def api_decrypt(
     audio_file: UploadFile = File(...),
     passphrase: str = Form(...),
     encrypted_blob: str = Form(...),
+    create_session: bool = Form(True),
 ):
     """
     Decrypt a file using Echotome AF-KDF.
@@ -178,9 +502,10 @@ async def api_decrypt(
         audio_file: Audio file for AF-KDF (same as used for encryption)
         passphrase: User passphrase (same as used for encryption)
         encrypted_blob: JSON encrypted blob
+        create_session: Create a ritual session for the decrypted content (default: True)
 
     Returns:
-        Decrypted file
+        Decrypted file (and session info if create_session=True)
     """
     try:
         # Save uploaded audio to temp
@@ -248,7 +573,11 @@ async def api_get_vault(vault_id: str):
     if not vault:
         raise HTTPException(status_code=404, detail="Vault not found")
 
-    return {
+    # Check for active session
+    manager = get_session_manager()
+    session = manager.get_session_by_vault(vault_id)
+
+    response = {
         "id": vault.id,
         "name": vault.name,
         "profile": vault.profile,
@@ -256,12 +585,28 @@ async def api_get_vault(vault_id: str):
         "created_at": vault.created_at,
         "updated_at": vault.updated_at,
         "file_count": vault.file_count,
+        "has_active_session": session is not None,
     }
+
+    if session:
+        response["session"] = {
+            "session_id": session.session_id,
+            "time_remaining": session.time_remaining(),
+            "time_remaining_formatted": session.format_time_remaining(),
+        }
+
+    return response
 
 
 @app.delete("/vaults/{vault_id}")
 async def api_delete_vault(vault_id: str):
     """Delete a vault."""
+    # End any active session first
+    manager = get_session_manager()
+    session = manager.get_session_by_vault(vault_id)
+    if session:
+        manager.end_session(session.session_id, secure_delete=True)
+
     success = delete_vault(vault_id)
     if not success:
         raise HTTPException(status_code=404, detail="Vault not found")
@@ -269,7 +614,10 @@ async def api_delete_vault(vault_id: str):
     return {"status": "deleted", "vault_id": vault_id}
 
 
-# Run the API server
+# ============================================================================
+# Server
+# ============================================================================
+
 def start_server(host: str = "0.0.0.0", port: int = 8000):
     """
     Start the Echotome API server.

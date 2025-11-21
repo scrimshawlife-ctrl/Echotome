@@ -334,15 +334,28 @@ class SessionManager:
 
             return list(self._sessions.values())
 
-    def end_all_sessions(self) -> None:
-        """End all active sessions (use on shutdown)"""
+    def list_sessions(self) -> List[Session]:
+        """Alias for list_active_sessions()"""
+        return self.list_active_sessions()
+
+    def end_all_sessions(self, secure_delete: bool = True) -> int:
+        """
+        End all active sessions (use on shutdown or emergency lock).
+
+        Args:
+            secure_delete: Overwrite files with random data before deletion
+
+        Returns:
+            Number of sessions ended
+        """
         with self._lock:
             session_ids = list(self._sessions.keys())
 
             for session_id in session_ids:
-                self.end_session(session_id)
+                self.end_session(session_id, secure_delete=secure_delete)
 
             logger.info(f"Ended all sessions ({len(session_ids)} total)")
+            return len(session_ids)
 
     def _generate_session_id(self, vault_id: str) -> str:
         """Generate unique session ID"""
