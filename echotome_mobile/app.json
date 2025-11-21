@@ -1,0 +1,32 @@
+{
+  "name": "Echotome",
+  "displayName": "Echotome",
+  "version": "3.0.0",
+  "description": "Ritual Cryptography Mobile Client",
+  "orientation": "portrait",
+  "icon": "./assets/icon.png",
+  "userInterfaceStyle": "dark",
+  "splash": {
+    "image": "./assets/splash.png",
+    "resizeMode": "contain",
+    "backgroundColor": "#0A0A0F"
+  },
+  "android": {
+    "package": "com.echotome.mobile",
+    "versionCode": 1,
+    "adaptiveIcon": {
+      "foregroundImage": "./assets/adaptive-icon.png",
+      "backgroundColor": "#0A0A0F"
+    },
+    "permissions": [
+      "android.permission.RECORD_AUDIO",
+      "android.permission.READ_EXTERNAL_STORAGE",
+      "android.permission.WRITE_EXTERNAL_STORAGE"
+    ]
+  },
+  "ios": {
+    "bundleIdentifier": "com.echotome.mobile",
+    "buildNumber": "1.0.0",
+    "supportsTablet": false
+  }
+}
