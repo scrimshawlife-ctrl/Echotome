@@ -1,10 +1,10 @@
 /**
- * Echotome Mobile v3.0 VaultDetailScreen
+ * Echotome Mobile v3.1 VaultDetailScreen
  *
- * View vault details with actions for encrypt/decrypt
+ * View vault details with session management and actions for encrypt/decrypt
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -12,6 +12,7 @@ import {
   StyleSheet,
   ActivityIndicator,
   Alert,
+  RefreshControl,
 } from 'react-native';
 import { colors } from '../theme/colors';
 import { spacing } from '../theme/spacing';
@@ -19,6 +20,7 @@ import { typography } from '../theme/typography';
 import { Button } from '../components/Button';
 import { PrivacyPill } from '../components/PrivacyPill';
 import { SigilPreview } from '../components/SigilPreview';
+import { SessionCountdown } from '../components/SessionCountdown';
 import { formatDateTime, shortenRuneId } from '../utils/formatting';
 import { getApiClient } from '../api/client';
 import type { Vault } from '../api/types';
@@ -31,11 +33,30 @@ export function VaultDetailScreen({ navigation, route }: Props) {
 
   const [vault, setVault] = useState<Vault>();
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string>();
+
+  const loadVaultDetails = useCallback(async (showRefresh = false) => {
+    try {
+      setError(undefined);
+      if (showRefresh) setRefreshing(true);
+
+      const apiClient = getApiClient();
+      // Use getVault for single vault with session status (v3.1)
+      const vaultData = await apiClient.getVault(vaultId);
+      setVault(vaultData);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to load vault';
+      setError(message);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [vaultId]);
 
   useEffect(() => {
     loadVaultDetails();
-  }, [vaultId]);
+  }, [loadVaultDetails]);
 
   useEffect(() => {
     // Refresh when screen comes into focus
@@ -44,27 +65,7 @@ export function VaultDetailScreen({ navigation, route }: Props) {
     });
 
     return unsubscribe;
-  }, [navigation, vaultId]);
-
-  const loadVaultDetails = async () => {
-    try {
-      setError(undefined);
-      const apiClient = getApiClient();
-      const vaults = await apiClient.listVaults();
-      const foundVault = vaults.find((v) => v.id === vaultId);
-
-      if (!foundVault) {
-        throw new Error('Vault not found');
-      }
-
-      setVault(foundVault);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to load vault';
-      setError(message);
-    } finally {
-      setLoading(false);
-    }
-  };
+  }, [navigation, loadVaultDetails]);
 
   const handleEncrypt = () => {
     navigation.navigate('Encrypt', { vaultId });
@@ -94,6 +95,24 @@ export function VaultDetailScreen({ navigation, route }: Props) {
     navigation.navigate('Decrypt', { vaultId });
   };
 
+  const handleSessionEnd = useCallback(() => {
+    // Refresh vault to clear session status
+    loadVaultDetails();
+  }, [loadVaultDetails]);
+
+  const handleSessionExtended = useCallback((newTime: number) => {
+    // Update vault session time
+    if (vault?.session) {
+      setVault({
+        ...vault,
+        session: {
+          ...vault.session,
+          time_remaining: newTime,
+        },
+      });
+    }
+  }, [vault]);
+
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
@@ -112,12 +131,34 @@ export function VaultDetailScreen({ navigation, route }: Props) {
     );
   }
 
+  const hasActiveSession = vault.has_active_session && vault.session;
+
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.content}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={() => loadVaultDetails(true)}
+          tintColor={colors.primary}
+        />
+      }
+    >
       <View style={styles.header}>
         <Text style={styles.name}>{vault.name}</Text>
         <PrivacyPill profile={vault.profile} />
       </View>
+
+      {/* Session Countdown (v3.1) */}
+      {hasActiveSession && vault.session && (
+        <SessionCountdown
+          session={vault.session}
+          vaultId={vault.id}
+          onSessionEnd={handleSessionEnd}
+          onSessionExtended={handleSessionExtended}
+        />
+      )}
 
       <View style={styles.sigilContainer}>
         <SigilPreview
@@ -155,7 +196,19 @@ export function VaultDetailScreen({ navigation, route }: Props) {
               vault.has_certificate ? styles.metadataValueSuccess : styles.metadataValueDanger,
             ]}
           >
-            {vault.has_certificate ? '🔮 Ritual Bound' : '⚠️ Not Bound'}
+            {vault.has_certificate ? 'Ritual Bound' : 'Not Bound'}
+          </Text>
+        </View>
+
+        <View style={styles.metadataRow}>
+          <Text style={styles.metadataLabel}>Session Status</Text>
+          <Text
+            style={[
+              styles.metadataValue,
+              hasActiveSession ? styles.metadataValueSuccess : styles.metadataValueLocked,
+            ]}
+          >
+            {hasActiveSession ? 'Unlocked' : 'Locked'}
           </Text>
         </View>
 
@@ -170,19 +223,37 @@ export function VaultDetailScreen({ navigation, route }: Props) {
       </View>
 
       <View style={styles.actions}>
-        <Button
-          title="Encrypt into Vault"
-          onPress={handleEncrypt}
-          variant="primary"
-          fullWidth
-        />
-
-        <Button
-          title="Unlock Vault"
-          onPress={handleDecrypt}
-          variant="secondary"
-          fullWidth
-        />
+        {hasActiveSession ? (
+          <>
+            <Button
+              title="View Decrypted Files"
+              onPress={() => navigation.navigate('DecryptedFiles', { vaultId })}
+              variant="primary"
+              fullWidth
+            />
+            <Button
+              title="Encrypt More Files"
+              onPress={handleEncrypt}
+              variant="secondary"
+              fullWidth
+            />
+          </>
+        ) : (
+          <>
+            <Button
+              title="Encrypt into Vault"
+              onPress={handleEncrypt}
+              variant="primary"
+              fullWidth
+            />
+            <Button
+              title="Unlock Vault"
+              onPress={handleDecrypt}
+              variant="secondary"
+              fullWidth
+            />
+          </>
+        )}
 
         {!vault.has_certificate && (
           <Button
@@ -297,6 +368,10 @@ const styles = StyleSheet.create({
 
   metadataValueDanger: {
     color: colors.warning,
+  },
+
+  metadataValueLocked: {
+    color: colors.textSecondary,
   },
 
   actions: {
