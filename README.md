@@ -1,8 +1,8 @@
-# Echotome v3.1
+# Echotome v3.2
 
-**Ritual Cryptography Engine — Hardened Edition**
+**Ritual Cryptography Engine — Session & Locality Enforcement**
 
-Echotome v3.1 introduces **Ritual Cryptography** — a system that binds encryption keys to the temporal playback of audio, creating cryptographic rituals that can only be performed in real-time with the correct audio, device, and timing.
+Echotome v3.2 introduces **Time-Limited Sessions** and **Strict Locality Enforcement** on top of the Ritual Cryptography foundation, ensuring decrypted content only exists temporarily and all operations remain strictly local.
 
 All cryptographic operations are performed **locally**. No audio, keys, certificates, or decrypted content are ever transmitted to third-party servers.
 
@@ -36,6 +36,32 @@ Echotome performs **all cryptography locally** on your device:
 **The only network activity**: Client ↔ your own Echotome backend API (optional, self-hosted)
 
 **No external dependencies**: No cloud services, no telemetry, no analytics, no tracking.
+
+**V3.2 Strict Locality**: Privacy constants enforced at code level. Network isolation, no telemetry, no third-party uploads. All operations verified local-only.
+
+---
+
+## 🎯 V3.2 Session Management
+
+### Time-Limited Ritual Sessions
+
+When you unlock a vault, Echotome creates a **session** with a time limit:
+
+- **Quick Lock**: 1 hour (3600s) — casual use
+- **Ritual Lock**: 20 minutes (1200s) — balanced security
+- **Black Vault**: 5 minutes (300s) — maximum paranoia
+
+**Session Lifecycle**:
+1. **Unlock**: Ritual performed, session created, temp directory allocated
+2. **Access**: Decrypted files exist only in `~/.echotome/sessions/<session_id>/`
+3. **Auto-Lock**: Session expires, plaintext wiped, keys dropped from memory
+4. **Manual Lock**: User can lock anytime, immediate cleanup
+
+**Secure Cleanup**:
+- Files overwritten with random data (3 passes) before deletion
+- Master keys zeroed in memory
+- Session directories removed
+- Attack window limited to session duration
 
 ---
 
