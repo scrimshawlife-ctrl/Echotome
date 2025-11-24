@@ -1,5 +1,5 @@
 """
-Echotome v3.1 Session Management
+Echotome v3.2 Session Management & Locality Enforcement
 
 Time-limited "ritual windows" where decrypted content exists ephemerally.
 
@@ -9,6 +9,12 @@ Architecture:
 - Master keys held in memory only during session
 - Session auto-expires after TTL (profile-dependent)
 - On expiry: plaintext wiped, keys discarded, vault locked
+
+v3.2 Enhancements:
+- Strict locality enforcement (no network, no external telemetry)
+- Profile-based TTLs from privacy_profiles module
+- Black Vault: memory-only decryption (no plaintext disk)
+- Privacy-aware logging (no sensitive data in logs)
 
 This shrinks the attack window to the ritual duration itself.
 """
@@ -23,6 +29,7 @@ from typing import Optional, Dict, List
 from threading import RLock
 
 from .privacy import get_logger
+from .privacy_profiles import get_profile
 
 
 # Session storage directory
@@ -43,30 +50,39 @@ class SessionConfig:
 
     @staticmethod
     def for_profile(profile_name: str) -> "SessionConfig":
-        """Get session config for a privacy profile"""
+        """
+        Get session config for a privacy profile.
+
+        v3.2: Uses TTLs from PrivacyProfile configuration.
+        """
+        profile = get_profile(profile_name)
+
+        # v3.2: Use TTL from profile configuration
+        default_ttl = profile.session_ttl_seconds
+
         if profile_name == "Quick Lock":
             return SessionConfig(
-                default_ttl_seconds=30 * 60,  # 30 minutes
-                max_ttl_seconds=120 * 60,     # 2 hours
+                default_ttl_seconds=default_ttl,  # v3.2: 1 hour (3600s)
+                max_ttl_seconds=120 * 60,         # 2 hours max
                 auto_lock_on_background=False,
                 allow_external_apps=True,
                 secure_delete=False,
             )
         elif profile_name == "Ritual Lock":
             return SessionConfig(
-                default_ttl_seconds=15 * 60,  # 15 minutes
-                max_ttl_seconds=60 * 60,      # 1 hour
+                default_ttl_seconds=default_ttl,  # v3.2: 20 minutes (1200s)
+                max_ttl_seconds=60 * 60,          # 1 hour max
                 auto_lock_on_background=False,
                 allow_external_apps=True,
                 secure_delete=True,
             )
         elif profile_name == "Black Vault":
             return SessionConfig(
-                default_ttl_seconds=5 * 60,   # 5 minutes
-                max_ttl_seconds=15 * 60,      # 15 minutes max
-                auto_lock_on_background=True,
-                allow_external_apps=False,    # Never allow external apps
-                secure_delete=True,
+                default_ttl_seconds=default_ttl,  # v3.2: 5 minutes (300s)
+                max_ttl_seconds=15 * 60,          # 15 minutes max
+                auto_lock_on_background=True,     # Auto-lock on background
+                allow_external_apps=False,        # Never allow external apps
+                secure_delete=True,               # Always secure delete
             )
         else:
             # Default: moderate security

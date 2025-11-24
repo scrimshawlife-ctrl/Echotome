@@ -1,7 +1,14 @@
 """
-Echotome v3.1 — Ritual Cryptography Engine (Hardened)
+Echotome v3.2 — Session & Locality Enforcement
 
 A modular privacy instrument combining:
+
+V3.2 Session & Locality Enforcement:
+- Time-Limited Sessions: Profile-based TTLs (Quick: 1h, Ritual: 20m, Black: 5m)
+- Temporary Directories: Session-specific decrypted file storage
+- Auto Re-lock: Automatic cleanup on expiration or background
+- Strict Locality: No network calls, no telemetry, local-only operation
+- Privacy-Aware Logging: No sensitive data in logs (audio, keys, filenames)
 
 V3.1 Hardening Features:
 - Threat Models: Explicit security posture per privacy profile
@@ -197,7 +204,7 @@ from .sessions import (
     cleanup_expired_sessions,
 )
 
-__version__ = "3.1.0"
+__version__ = "3.2.0"
 
 __all__ = [
     # Version

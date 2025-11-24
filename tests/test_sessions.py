@@ -1,7 +1,9 @@
 """
-Echotome v3.1 Test Suite - Session Management
+Echotome v3.2 Test Suite - Session Management
 
 Tests for time-limited ritual windows and ephemeral plaintext.
+
+v3.2: Updated TTLs - Quick: 1h, Ritual: 20m, Black: 5m
 """
 
 import time
@@ -19,18 +21,18 @@ from echotome.sessions import (
 
 
 def test_session_config_for_profiles():
-    """Test session configs are appropriate for each profile"""
+    """Test session configs are appropriate for each profile (v3.2 TTLs)"""
     quick_config = SessionConfig.for_profile("Quick Lock")
-    assert quick_config.default_ttl_seconds == 30 * 60  # 30 min
+    assert quick_config.default_ttl_seconds == 60 * 60  # v3.2: 1 hour
     assert quick_config.allow_external_apps == True
     assert quick_config.secure_delete == False
 
     ritual_config = SessionConfig.for_profile("Ritual Lock")
-    assert ritual_config.default_ttl_seconds == 15 * 60  # 15 min
+    assert ritual_config.default_ttl_seconds == 20 * 60  # v3.2: 20 min
     assert ritual_config.secure_delete == True
 
     black_config = SessionConfig.for_profile("Black Vault")
-    assert black_config.default_ttl_seconds == 5 * 60  # 5 min
+    assert black_config.default_ttl_seconds == 5 * 60  # v3.2: 5 min (unchanged)
     assert black_config.auto_lock_on_background == True
     assert black_config.allow_external_apps == False  # Never for Black Vault
     assert black_config.secure_delete == True

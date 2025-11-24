@@ -1,5 +1,5 @@
 """
-Echotome v3.1 Privacy Posture & Telemetry Guardrails
+Echotome v3.2 Privacy Posture, Telemetry Guardrails & Locality Enforcement
 
 Enforces strict privacy controls and prevents accidental data leakage.
 
@@ -9,11 +9,34 @@ Privacy Principles:
 - Minimal logging (generic events only, no PII)
 - No storage of sensitive artifacts in logs
 - All optional features must be explicitly opt-in
+
+V3.2 Locality Enforcement:
+- PRIVACY_STRICT: Must be True (enforces local-only operation)
+- ALLOW_THIRD_PARTY_UPLOADS: Must be False (no cloud sync)
+- ALLOW_EXTERNAL_TELEMETRY: Must be False (no analytics)
+- NETWORK_ISOLATED: Must be True (no outbound network calls)
 """
 
 import logging
 from typing import Optional, Any
 from enum import Enum
+
+
+# ========================
+# V3.2: LOCALITY ENFORCEMENT CONSTANTS
+# ========================
+
+# Strict privacy mode - MUST be True for production
+PRIVACY_STRICT = True
+
+# Third-party upload/sync - MUST be False for local-only operation
+ALLOW_THIRD_PARTY_UPLOADS = False
+
+# External telemetry - MUST be False for privacy
+ALLOW_EXTERNAL_TELEMETRY = False
+
+# Network isolation - MUST be True to prevent external calls
+NETWORK_ISOLATED = True
 
 
 class PrivacyLevel(Enum):

@@ -10,6 +10,7 @@ class PrivacyProfile:
     Privacy profile defining KDF parameters, audio weighting, and threat model.
 
     v3.1: Extended with explicit threat models, security flags, and operational constraints.
+    v3.2: Added session management and locality enforcement.
 
     Attributes:
         name: Profile name
@@ -28,6 +29,8 @@ class PrivacyProfile:
         threat_model_protects_against: What this profile protects against
         threat_model_does_not_protect_against: Known limitations
         allows_visual_ritual: Whether visual/text ritual mode is allowed
+        session_ttl_seconds: Default session TTL in seconds (v3.2)
+        allow_plaintext_disk: Whether decrypted files can be written to disk (v3.2)
     """
     name: str
     kdf_time: int
@@ -45,6 +48,8 @@ class PrivacyProfile:
     threat_model_protects_against: str
     threat_model_does_not_protect_against: str
     allows_visual_ritual: bool
+    session_ttl_seconds: int = 900  # v3.2: Default 15 minutes
+    allow_plaintext_disk: bool = True  # v3.2: Allow disk-based decryption
 
     def __str__(self) -> str:
         return (
@@ -85,6 +90,8 @@ QUICK_LOCK = PrivacyProfile(
         "Attackers with both device and ritual audio track. State-level adversaries."
     ),
     allows_visual_ritual=True,
+    session_ttl_seconds=3600,  # v3.2: 1 hour
+    allow_plaintext_disk=True,  # v3.2: Disk decryption allowed
 )
 """
 Quick Lock: Fast, passphrase-only encryption.
@@ -124,6 +131,8 @@ RITUAL_LOCK = PrivacyProfile(
         "Attackers who can both steal identity keys and obtain ritual audio with perfect timing."
     ),
     allows_visual_ritual=True,
+    session_ttl_seconds=1200,  # v3.2: 20 minutes
+    allow_plaintext_disk=True,  # v3.2: Disk decryption allowed
 )
 """
 Ritual Lock: Balanced audio-enhanced encryption with timing enforcement.
@@ -165,6 +174,8 @@ BLACK_VAULT = PrivacyProfile(
         "Attacks after successful unlock while vault is open."
     ),
     allows_visual_ritual=False,  # Audio ritual strictly required
+    session_ttl_seconds=300,  # v3.2: 5 minutes (strict)
+    allow_plaintext_disk=False,  # v3.2: Memory-only recommended
 )
 """
 Black Vault: Maximum security with deniability and microphone-only ritual.
@@ -236,6 +247,7 @@ def describe_profile(name: str) -> dict:
     Get comprehensive description of profile for API/UI display.
 
     v3.1: Returns full threat model and security parameters.
+    v3.2: Includes session management parameters.
 
     Args:
         name: Profile name
@@ -261,6 +273,10 @@ def describe_profile(name: str) -> dict:
         "hardware_recommended": profile.hardware_recommended,
         "unrecoverable_default": profile.unrecoverable_default,
         "allows_visual_ritual": profile.allows_visual_ritual,
+
+        # Session parameters (v3.2)
+        "session_ttl_seconds": profile.session_ttl_seconds,
+        "allow_plaintext_disk": profile.allow_plaintext_disk,
 
         # KDF parameters
         "kdf_time": profile.kdf_time,
