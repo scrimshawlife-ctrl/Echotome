@@ -1049,6 +1049,16 @@ See [CHANGELOG.md](CHANGELOG.md) for complete version history.
 
 ---
 
+## 📚 Documentation
+
+Comprehensive guides for v3.2 deployment, integration, and security:
+
+- **[Deployment Guide](docs/DEPLOYMENT.md)**: Production deployment, monitoring, performance tuning
+- **[Client Integration](docs/CLIENT_INTEGRATION.md)**: Mobile/web integration patterns, API reference
+- **[Security Guide](docs/SECURITY.md)**: Threat models, hardening, privacy guardrails
+
+---
+
 ## 📄 License
 
 See LICENSE file.
@@ -1062,6 +1072,6 @@ For issues, questions, or contributions:
 
 ---
 
-**Echotome v3.1 — Hardened Edition**
+**Echotome v3.2 — Session & Locality Enforcement**
 
-*"The ritual is the key."*
+*"The ritual is the key. The session is the window."*

@@ -1,12 +1,12 @@
 """
-Echotome v3.1 CLI
+Echotome v3.2 CLI — Session & Locality Enforcement
 
 Commands:
 - sigil: Generate crypto-sigil from audio (legacy v0.2.0)
 - encrypt: Encrypt file with AF-KDF
-- decrypt: Decrypt file with AF-KDF
-- session: Manage ritual sessions (list, lock, extend)
-- profile: View privacy profiles
+- decrypt: Decrypt file with AF-KDF (creates time-limited session)
+- session: Manage ritual sessions (list, lock, extend, files)
+- profile: View privacy profiles with session TTLs
 - recovery: Generate recovery codes
 """
 
@@ -31,12 +31,12 @@ def create_parser() -> argparse.ArgumentParser:
     """Create argument parser with subcommands."""
     parser = argparse.ArgumentParser(
         prog="echotome",
-        description="Echotome v3.1 — Ritual Cryptography Engine",
+        description="Echotome v3.2 — Session & Locality Enforcement",
     )
     parser.add_argument(
         "--version",
         action="version",
-        version="Echotome v3.1.0 (Hardened Edition)",
+        version="Echotome v3.2.0 (Session & Locality Enforcement)",
     )
 
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
@@ -124,6 +124,10 @@ def create_parser() -> argparse.ArgumentParser:
 
     # session cleanup
     session_subparsers.add_parser("cleanup", help="Cleanup expired sessions")
+
+    # session files <session_id>
+    files_parser = session_subparsers.add_parser("files", help="List files in a session (v3.2)")
+    files_parser.add_argument("session_id", type=str, help="Session ID")
 
     # -------------------------------------------------------------------------
     # profile: View privacy profiles
@@ -297,8 +301,38 @@ def cmd_session(args: argparse.Namespace) -> int:
         print(f"[Echotome] Cleaned up {count} expired session(s)")
         return 0
 
+    elif args.session_command == "files":
+        session = manager.get_session(args.session_id)
+        if not session:
+            print(f"[Echotome] Session not found: {args.session_id}", file=sys.stderr)
+            return 1
+
+        print(f"[Echotome] Session: {args.session_id[:16]}...")
+        print(f"[Echotome] Vault: {session.vault_id}")
+        print(f"[Echotome] Profile: {session.profile}")
+        print(f"[Echotome] Time remaining: {session.format_time_remaining()}")
+        print(f"[Echotome] Session directory: {session.session_dir}")
+        print()
+
+        # List files in session directory
+        if session.session_dir.exists():
+            files = list(session.session_dir.iterdir())
+            if files:
+                print(f"[Echotome] Files ({len(files)}):")
+                print("-" * 60)
+                for file_path in files:
+                    if file_path.is_file():
+                        size_mb = file_path.stat().st_size / (1024 * 1024)
+                        print(f"  {file_path.name} ({size_mb:.2f} MB)")
+                print("-" * 60)
+            else:
+                print("[Echotome] No files in session")
+        else:
+            print("[Echotome] Session directory not found")
+        return 0
+
     else:
-        print("[Echotome] Unknown session command. Use: list, lock, lock-all, extend, cleanup")
+        print("[Echotome] Unknown session command. Use: list, lock, lock-all, extend, cleanup, files")
         return 1
 
 
@@ -326,28 +360,52 @@ def cmd_profile(args: argparse.Namespace) -> int:
             print(f"  Memory: {desc['kdf']['memory']} MB")
             print(f"  Parallelism: {desc['kdf']['parallelism']} threads")
             print()
-            print("Session Config:")
+            print("Session Configuration (v3.2):")
             config = SessionConfig.for_profile(args.profile_name)
-            print(f"  Default TTL: {config.default_ttl_seconds // 60} minutes")
+            ttl_hours = config.default_ttl_seconds / 3600
+            ttl_mins = (config.default_ttl_seconds % 3600) / 60
+            if ttl_hours >= 1:
+                ttl_str = f"{int(ttl_hours)}h" if ttl_mins == 0 else f"{int(ttl_hours)}h {int(ttl_mins)}m"
+            else:
+                ttl_str = f"{int(ttl_mins)}m"
+            print(f"  Default TTL: {ttl_str} ({config.default_ttl_seconds}s)")
             print(f"  Max TTL: {config.max_ttl_seconds // 60} minutes")
             print(f"  Auto-lock on background: {config.auto_lock_on_background}")
+            print(f"  Allow external apps: {config.allow_external_apps}")
             print(f"  Secure delete: {config.secure_delete}")
+
+            # v3.2: Session parameters from profile
+            profile_obj = get_profile(args.profile_name)
+            print()
+            print("Session Enforcement (v3.2):")
+            print(f"  Allow plaintext disk: {profile_obj.allow_plaintext_disk}")
+            if not profile_obj.allow_plaintext_disk:
+                print("  ⚠️  Memory-only mode: decrypted files stay in RAM")
             return 0
         except ValueError as e:
             print(f"[Echotome] Error: {e}", file=sys.stderr)
             return 1
     else:
         profiles = list_profiles()
-        print("\n[Echotome] Privacy Profiles")
-        print("=" * 50)
+        print("\n[Echotome] Privacy Profiles (v3.2)")
+        print("=" * 60)
         for p in profiles:
             threat_id = getattr(p, "threat_model_id", "unknown")
+            # v3.2: Format session TTL
+            ttl_seconds = getattr(p, "session_ttl_seconds", 900)
+            if ttl_seconds >= 3600:
+                ttl_str = f"{ttl_seconds // 3600}h"
+            else:
+                ttl_str = f"{ttl_seconds // 60}min"
+
             print(f"\n{p.name}")
             print(f"  Threat Model: {threat_id}")
+            print(f"  Session TTL: {ttl_str} (v3.2)")  # v3.2
             print(f"  Audio Weight: {p.audio_weight * 100:.0f}%")
             print(f"  Deniable: {p.deniable}")
             print(f"  KDF: time={p.kdf_time}, memory={p.kdf_memory}MB")
         print()
+        print("Use 'echotome profile <name>' for detailed information")
         return 0
 
 
