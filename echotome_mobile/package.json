@@ -1,7 +1,7 @@
 {
   "name": "echotome-mobile",
-  "version": "3.0.0",
-  "description": "Echotome Mobile v3.0 - Ritual Cryptography Client",
+  "version": "3.2.0",
+  "description": "Echotome Mobile v3.2 - Session & Locality Enforcement",
   "main": "index.js",
   "scripts": {
     "android": "react-native run-android",
