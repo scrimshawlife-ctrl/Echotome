@@ -362,8 +362,8 @@ async def list_session_files(session_id: str):
 
     # List files in session temp directory
     files = []
-    if session.temp_dir.exists():
-        for file_path in session.temp_dir.iterdir():
+    if session.session_dir.exists():
+        for file_path in session.session_dir.iterdir():
             if file_path.is_file():
                 files.append({
                     "filename": file_path.name,
@@ -397,15 +397,16 @@ async def download_session_file(session_id: str, filename: str):
         raise HTTPException(status_code=404, detail="Session not found or expired")
 
     # Construct file path (with basic path traversal protection)
-    file_path = session.temp_dir / filename
+    file_path = session.session_dir / filename
 
     # Security: Ensure file is within session directory
     try:
         file_path = file_path.resolve()
-        if not str(file_path).startswith(str(session.temp_dir.resolve())):
-            raise HTTPException(status_code=403, detail="Access denied: path traversal detected")
-    except Exception:
+    except (OSError, ValueError) as e:
         raise HTTPException(status_code=400, detail="Invalid filename")
+
+    if not str(file_path).startswith(str(session.session_dir.resolve())):
+        raise HTTPException(status_code=403, detail="Access denied: path traversal detected")
 
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="File not found in session")
@@ -652,7 +653,7 @@ async def api_decrypt(
             )
 
             # Move decrypted file to session directory
-            session_file_path = session.temp_dir / "decrypted_file"
+            session_file_path = session.session_dir / "decrypted_file"
             shutil.move(str(out_path), str(session_file_path))
 
             # Return session metadata
