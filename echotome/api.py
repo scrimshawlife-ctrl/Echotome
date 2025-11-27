@@ -1,16 +1,20 @@
 """
-Echotome v3.1 REST API
+Echotome v3.2 REST API — Session & Locality Enforcement
 
 Provides HTTP endpoints for:
 - Vault management (create, list, delete)
 - Encryption/decryption with AF-KDF
-- Session management (ritual windows)
+- Session management with time-limited access (ritual windows)
+- Profile-based session TTLs (Quick: 1h, Ritual: 20m, Black: 5m)
 - Privacy profiles with threat models
 - Multi-track ritual support
+- Locality enforcement (local-only operations, no telemetry)
 """
 
 from __future__ import annotations
 
+import json
+import shutil
 import tempfile
 from pathlib import Path
 from typing import Optional, List
@@ -43,8 +47,8 @@ from .recovery import generate_recovery_codes, create_recovery_config
 # Initialize FastAPI app
 app = FastAPI(
     title="Echotome API",
-    description="Ritual Cryptography Engine — Audio-Field Key Derivation with Session Management",
-    version="3.1.0",
+    description="Ritual Cryptography Engine — Session & Locality Enforcement",
+    version="3.2.0",
 )
 
 
@@ -100,14 +104,17 @@ async def api_info():
     """API information and capabilities."""
     return {
         "name": "Echotome",
-        "version": "3.1.0",
-        "edition": "Hardened",
+        "version": "3.2.0",
+        "edition": "Session & Locality Enforcement",
         "features": [
             "session_management",
+            "time_limited_sessions",
+            "profile_based_ttls",
             "multi_track_rituals",
             "recovery_codes",
             "threat_models",
             "privacy_guardrails",
+            "locality_enforcement",
         ],
         "locality": "All cryptographic operations performed locally",
     }
@@ -119,7 +126,7 @@ async def api_info():
 
 @app.get("/profiles")
 async def get_profiles():
-    """List all available privacy profiles with threat models."""
+    """List all available privacy profiles with threat models and session TTLs (v3.2)."""
     profiles = list_profiles()
     return {
         "profiles": [
@@ -136,6 +143,10 @@ async def get_profiles():
                 "threat_model_id": getattr(p, "threat_model_id", "unknown"),
                 "threat_model_description": getattr(p, "threat_model_description", ""),
                 "unrecoverable_default": getattr(p, "unrecoverable_default", False),
+                # V3.2: Session management parameters
+                "session_ttl_seconds": getattr(p, "session_ttl_seconds", 900),
+                "session_ttl_formatted": f"{getattr(p, 'session_ttl_seconds', 900) // 60} minutes",
+                "allow_plaintext_disk": getattr(p, "allow_plaintext_disk", True),
             }
             for p in profiles
         ],
@@ -335,6 +346,83 @@ async def end_all_sessions(secure_delete: bool = True):
     }
 
 
+@app.get("/sessions/{session_id}/files")
+async def list_session_files(session_id: str):
+    """
+    List all decrypted files in a session directory (v3.2).
+
+    Returns file metadata for all files in the session's temporary directory.
+    Files are automatically cleaned up when the session expires or is ended.
+    """
+    manager = get_session_manager()
+    session = manager.get_session(session_id)
+
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found or expired")
+
+    # List files in session temp directory
+    files = []
+    if session.temp_dir.exists():
+        for file_path in session.temp_dir.iterdir():
+            if file_path.is_file():
+                files.append({
+                    "filename": file_path.name,
+                    "size_bytes": file_path.stat().st_size,
+                    "download_url": f"/sessions/{session_id}/files/{file_path.name}",
+                })
+
+    return {
+        "session_id": session_id,
+        "vault_id": session.vault_id,
+        "profile": session.profile,
+        "time_remaining": session.time_remaining(),
+        "time_remaining_formatted": session.format_time_remaining(),
+        "files": files,
+        "file_count": len(files),
+    }
+
+
+@app.get("/sessions/{session_id}/files/{filename}")
+async def download_session_file(session_id: str, filename: str):
+    """
+    Download a specific file from a session directory (v3.2).
+
+    Files are only accessible within the session time window.
+    Session must be active and not expired.
+    """
+    manager = get_session_manager()
+    session = manager.get_session(session_id)
+
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found or expired")
+
+    # Construct file path (with basic path traversal protection)
+    file_path = session.temp_dir / filename
+
+    # Security: Ensure file is within session directory
+    try:
+        file_path = file_path.resolve()
+        if not str(file_path).startswith(str(session.temp_dir.resolve())):
+            raise HTTPException(status_code=403, detail="Access denied: path traversal detected")
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="File not found in session")
+
+    if not file_path.is_file():
+        raise HTTPException(status_code=400, detail="Not a file")
+
+    # Update session activity
+    session.last_activity = session.created_at  # Touch the session
+
+    return FileResponse(
+        file_path,
+        media_type="application/octet-stream",
+        filename=filename,
+    )
+
+
 # ============================================================================
 # Recovery Codes (v3.1)
 # ============================================================================
@@ -494,20 +582,30 @@ async def api_decrypt(
     passphrase: str = Form(...),
     encrypted_blob: str = Form(...),
     create_session: bool = Form(True),
+    vault_id: Optional[str] = Form(None),
 ):
     """
     Decrypt a file using Echotome AF-KDF.
+
+    V3.2: Now creates time-limited sessions with profile-based TTLs.
 
     Args:
         audio_file: Audio file for AF-KDF (same as used for encryption)
         passphrase: User passphrase (same as used for encryption)
         encrypted_blob: JSON encrypted blob
         create_session: Create a ritual session for the decrypted content (default: True)
+        vault_id: Optional vault ID to associate with session
 
     Returns:
-        Decrypted file (and session info if create_session=True)
+        If create_session=True: Session metadata with file info
+        If create_session=False: Direct file download (legacy mode)
     """
     try:
+        # Parse encrypted blob to extract metadata
+        blob_data = json.loads(encrypted_blob)
+        profile = blob_data.get("profile", "Quick Lock")
+        rune_id = blob_data.get("rune_id", "unknown")
+
         # Save uploaded audio to temp
         with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as audio_tmp:
             audio_tmp.write(await audio_file.read())
@@ -518,9 +616,12 @@ async def api_decrypt(
             blob_tmp.write(encrypted_blob)
             blob_path = Path(blob_tmp.name)
 
-        # Decrypt
+        # Decrypt to temp location first
         with tempfile.NamedTemporaryFile(delete=False) as out_tmp:
             out_path = Path(out_tmp.name)
+
+        # Extract audio features before decrypting (needed for session key)
+        audio_features = extract_audio_features(audio_path)
 
         result = decrypt_with_echotome(
             audio_path,
@@ -529,17 +630,60 @@ async def api_decrypt(
             out_path,
         )
 
-        # Return decrypted file
-        response = FileResponse(
-            out_path,
-            media_type="application/octet-stream",
-            filename="decrypted_file",
-        )
+        # Clean up temp audio and blob
+        audio_path.unlink()
+        blob_path.unlink()
 
-        # Clean up will happen after response is sent
-        # Note: This is simplified; production code should use background tasks
+        if create_session:
+            # V3.2: Create session with profile-based TTL
+            manager = get_session_manager()
 
-        return response
+            # Derive master key for session storage
+            profile_obj = get_profile(profile)
+            master_key = derive_final_key(passphrase, audio_features, profile_obj)
+
+            # Create session
+            config = SessionConfig.for_profile(profile)
+            session = manager.create_session(
+                vault_id=vault_id or rune_id,
+                profile=profile,
+                master_key=master_key,
+                ttl_seconds=config.default_ttl_seconds,
+            )
+
+            # Move decrypted file to session directory
+            session_file_path = session.temp_dir / "decrypted_file"
+            shutil.move(str(out_path), str(session_file_path))
+
+            # Return session metadata
+            return {
+                "status": "decrypted",
+                "session_created": True,
+                "session": {
+                    "session_id": session.session_id,
+                    "vault_id": session.vault_id,
+                    "profile": session.profile,
+                    "created_at": session.created_at,
+                    "expires_at": session.expires_at,
+                    "time_remaining_seconds": session.time_remaining(),
+                    "time_remaining_formatted": session.format_time_remaining(),
+                },
+                "file": {
+                    "filename": "decrypted_file",
+                    "path": str(session_file_path),
+                    "access_url": f"/sessions/{session.session_id}/files/decrypted_file",
+                },
+                "rune_id": result.get("rune_id"),
+                "profile": result.get("profile"),
+            }
+        else:
+            # Legacy mode: return file directly
+            response = FileResponse(
+                out_path,
+                media_type="application/octet-stream",
+                filename="decrypted_file",
+            )
+            return response
 
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
