@@ -40,3 +40,7 @@ Thumbs.db
 .echotome/
 *.enc
 *.roc.json
+
+# Node
+node_modules/
+dist/
