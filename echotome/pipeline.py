@@ -3,7 +3,16 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 
-from .audio_layer import load_audio_mono, compute_spectral_map, extract_audio_features
+from .audio_layer import (
+    DEFAULT_FRAME_SIZE,
+    DEFAULT_HOP_SIZE,
+    DEFAULT_SAMPLE_RATE,
+    compute_spectral_map,
+    extract_audio_features,
+    extract_audio_features_from_samples,
+    frame_audio,
+    load_audio_mono,
+)
 from .config import EchotomeConfig, EchotomeResult
 from .crypto_core import derive_final_key, encrypt_bytes, decrypt_bytes, EncryptedBlob, rune_id_from_key
 from .privacy_profiles import get_profile
@@ -40,11 +49,24 @@ def encrypt_with_echotome(
     Returns:
         Metadata dictionary with rune_id, profile, etc.
     """
-    # Load profile
     profile = get_profile(profile_name)
 
-    # Extract audio features
-    audio_features = extract_audio_features(audio_path)
+    samples, sample_rate = load_audio_mono(audio_path, DEFAULT_SAMPLE_RATE)
+    frames = frame_audio(samples, frame_size=DEFAULT_FRAME_SIZE, hop_size=DEFAULT_HOP_SIZE)
+    spectral_map = compute_spectral_map(
+        samples,
+        frame_size=DEFAULT_FRAME_SIZE,
+        hop_size=DEFAULT_HOP_SIZE,
+        frames=frames,
+    )
+    audio_features = extract_audio_features_from_samples(
+        samples,
+        sr=sample_rate,
+        frame_size=DEFAULT_FRAME_SIZE,
+        hop_size=DEFAULT_HOP_SIZE,
+        frames=frames,
+        spectral_map=spectral_map,
+    )
 
     # Derive final key using AF-KDF
     key = derive_final_key(passphrase, audio_features, profile)
@@ -71,13 +93,7 @@ def encrypt_with_echotome(
     with open(out_file, "w") as f:
         f.write(blob.to_json())
 
-    # Generate and save sigil if requested
     if sigil_path:
-        spectral_map = compute_spectral_map(
-            load_audio_mono(audio_path, 16000)[0],
-            frame_size=2048,
-            hop_size=512,
-        )
         sigil = generate_sigil(spectral_map, key, size=(512, 512))
         sigil_path.parent.mkdir(parents=True, exist_ok=True)
         sigil.save(str(sigil_path), format="PNG")
