@@ -446,6 +446,38 @@ echotome input.wav output.png --key "secret"
 from echotome import encrypt_with_echotome, decrypt_with_echotome
 ```
 
+## 🛰️ Edge Deployment (Jetson Orin Nano Prep)
+
+- Reuse precomputed buffers to avoid extra FFT/resampling passes on constrained ARM SOCs:
+
+```python
+from echotome import (
+    DEFAULT_FRAME_SIZE,
+    DEFAULT_HOP_SIZE,
+    DEFAULT_SAMPLE_RATE,
+    compute_spectral_map,
+    extract_audio_features_from_samples,
+    frame_audio,
+    load_audio_mono,
+)
+
+samples, sr = load_audio_mono(audio_path, DEFAULT_SAMPLE_RATE)
+frames = frame_audio(samples, frame_size=DEFAULT_FRAME_SIZE, hop_size=DEFAULT_HOP_SIZE)
+spectral_map = compute_spectral_map(samples, DEFAULT_FRAME_SIZE, DEFAULT_HOP_SIZE, frames=frames)
+features = extract_audio_features_from_samples(
+    samples,
+    sr=sr,
+    frame_size=DEFAULT_FRAME_SIZE,
+    hop_size=DEFAULT_HOP_SIZE,
+    frames=frames,
+    spectral_map=spectral_map,
+)
+```
+
+- Keep the 16 kHz default sample rate unless you need full-fidelity analysis; it reduces CPU load for realtime work on the Orin Nano.
+- Ensure system deps are present on the kit (`sudo apt-get install libsndfile1`), and pin BLAS threads for predictable thermals (`export OPENBLAS_NUM_THREADS=2`).
+- If using OpenBLAS wheels, setting `OPENBLAS_CORETYPE=ARMV8` avoids generic kernels and speeds up numpy on Jetson-class boards.
+
 ---
 
 ## 📄 License

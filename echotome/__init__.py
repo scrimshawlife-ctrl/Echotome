@@ -47,8 +47,13 @@ from .privacy_profiles import (
 # Audio processing
 from .audio_layer import (
     extract_audio_features,
+    extract_audio_features_from_samples,
     load_audio_mono,
     compute_spectral_map,
+    frame_audio,
+    DEFAULT_FRAME_SIZE,
+    DEFAULT_HOP_SIZE,
+    DEFAULT_SAMPLE_RATE,
 )
 
 # Cryptography
@@ -218,8 +223,13 @@ __all__ = [
     "BLACK_VAULT",
     # Audio
     "extract_audio_features",
+    "extract_audio_features_from_samples",
     "load_audio_mono",
     "compute_spectral_map",
+    "frame_audio",
+    "DEFAULT_FRAME_SIZE",
+    "DEFAULT_HOP_SIZE",
+    "DEFAULT_SAMPLE_RATE",
     # Crypto
     "derive_final_key",
     "encrypt_bytes",
